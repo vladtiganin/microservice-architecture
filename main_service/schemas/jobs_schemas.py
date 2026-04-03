@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from main_service.schemas.enums import JobStatus
+from datetime import datetime
 
 
 class GetJobsRequest(BaseModel):
@@ -7,16 +9,23 @@ class GetJobsRequest(BaseModel):
 
 
 class CreateJobRequest(BaseModel):
-    title: str
-    description: str | None = None
-    is_done: bool = False 
+    type: str
+    payload: str
 
 
 class JobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
-    title: str
-    description: str | None = None
-    is_done: bool = False 
+    type: str
+    status: JobStatus
+    payload: str
+    result: str | None = None
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None 
 
 
 class JobListResponse(BaseModel):

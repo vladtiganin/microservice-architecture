@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends
-from api import dependencies
-from services import jobs_services
-from schemas.jobs_schemas import CreateJobRequest, JobListResponse, JobResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from main_service.api import dependencies
+from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse, JobResponse
+from main_service.services import jobs_services
 
 
 router = APIRouter(
@@ -11,27 +13,37 @@ router = APIRouter(
 
 
 @router.get("", response_model=JobListResponse)
-def get_jobs(
+async def get_jobs(
     request: dict = Depends(dependencies.pagination_parameters),
     service: jobs_services.JobService = Depends(dependencies.create_job_service_instance),
+    session: AsyncSession = Depends(dependencies.get_db_session)
     ):
-    return service.get_jobs(
-        request["skip"], 
-        request["limit"]
+    return await service.get_jobs(
+        skip=request["skip"], 
+        limit=request["limit"],
+        session=session
     )
 
 
 @router.post("", response_model=JobResponse)
-def post_job(
+async def post_job(
     job: CreateJobRequest,
     service: jobs_services.JobService = Depends(dependencies.create_job_service_instance),
+    session: AsyncSession = Depends(dependencies.get_db_session)
     ):
-    return service.create_job(job)
+    return await service.create_job(
+        job=job, 
+        session=session
+    )
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-def get_job_by_id(
+async def get_job_by_id(
     job_id: int,
     service: jobs_services.JobService = Depends(dependencies.create_job_service_instance),
+    session: AsyncSession =Depends(dependencies.get_db_session)
     ):
-    return service.get_job_by_id(job_id)
+    return await service.get_job_by_id(
+        job_id=job_id, 
+        session=session
+    )

@@ -1,10 +1,25 @@
-from repositories.jobs_repository import JobsRepository
-from services.jobs_services import JobService
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+
+from main_service.repositories.event_repository import EventRepository
+from main_service.repositories.jobs_repository import JobsRepository
+from main_service.services.jobs_services import JobService
+
+engine = create_async_engine(
+    "postgresql+asyncpg://postgres:Avumip42@localhost/db",
+    echo=True
+)
+
+AsyncSessionLocal = async_sessionmaker(engine)
+
+async def get_db_session():
+    async with AsyncSessionLocal() as session:
+        yield session
 
 
-repo = JobsRepository()
 
+event_repo = EventRepository()
+job_repo = JobsRepository()
 
 def pagination_parameters(skip: int = 0, limit: int = 10) -> dict:
     return {
@@ -13,9 +28,16 @@ def pagination_parameters(skip: int = 0, limit: int = 10) -> dict:
     }
 
 
-def create_repository_instance() -> JobsRepository:
-    return repo
+def create_event_repository_instance() -> EventRepository:
+    return event_repo
 
 
-def create_job_service_instance(repo: JobsRepository = Depends(create_repository_instance)) -> JobService:
-    return JobService(repo)
+def create_job_repository_instance() -> JobsRepository:
+    return job_repo
+
+
+def create_job_service_instance(
+        job_repo: JobsRepository = Depends(create_job_repository_instance),
+        event_repo: EventRepository = Depends(create_event_repository_instance),
+        ) -> JobService:
+    return JobService(job_repo, event_repo)

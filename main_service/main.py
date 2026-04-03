@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from api import jobs_api
+
+from main_service.api import jobs_api
 
 app = FastAPI(
     title="Job Processing Platform",

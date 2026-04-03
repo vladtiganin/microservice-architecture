@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column, declarative_base
-from sqlalchemy import Integer, String, Text, DateTime, func, Enum, ForeignKey, UniqueConstraint, Index
+from sqlalchemy import Integer, String, Text, DateTime, func, Enum, ForeignKey, UniqueConstraint, Index, JSON
 from main_service.schemas.enums import JobStatus, JobEventType
 from datetime import datetime
 
@@ -33,9 +33,9 @@ class JobEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id"), nullable=False)
-    event_type: Mapped[JobEventType] = mapped_column(Enum(JobEventType, name="job_status"), nullable=False)
+    event_type: Mapped[JobEventType] = mapped_column(Enum(JobEventType, name="job_event_type"), nullable=False)
     sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
