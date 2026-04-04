@@ -58,7 +58,7 @@ async def test_event_repository_add_persists_payload(session):
     )
     eve = await event_repo.add(eve, session)
 
-    statement = select(JobEvent).where(JobEvent.id == 1)
+    statement = select(JobEvent).where(JobEvent.id == eve.id)
     res = await session.execute(statement)
     res = res.scalar_one_or_none()
 
@@ -101,7 +101,7 @@ async def test_event_repository_add_allows_multiple_events_for_same_job_with_dif
 
     seques = [eve.sequence_no for eve in res]
 
-    assert seques == [1, 2]
+    assert seques == [eve_1.sequence_no, eve_2.sequence_no]
 
 
 @pytest.mark.asyncio
@@ -134,7 +134,8 @@ async def test_event_repository_add_raises_integrity_error_for_duplicate_sequenc
     eve_1 = await event_repo.add(eve_1, session)
 
     with pytest.raises(IntegrityError):
-        eve_2 = await event_repo.add(eve_2, session)
+        await event_repo.add(eve_2, session)
+    await session.rollback()
 
 
 @pytest.mark.asyncio
@@ -175,11 +176,11 @@ async def test_event_repository_add_allows_same_sequence_no_for_different_jobs(s
     eve_1 = await event_repo.add(eve_1, session)
     eve_2 = await event_repo.add(eve_2, session)
 
-    statement = select(JobEvent).order_by(JobEvent.sequence_no)
+    statement = select(JobEvent).order_by(JobEvent.job_id)
     res = await session.execute(statement)
     res = res.scalars().all()
 
     seques = [[eve.job_id, eve.sequence_no] for eve in res]
 
-    assert seques == [[1, 1], [2, 1]]
+    assert seques == [[eve_1.job_id, eve_1.sequence_no], [eve_2.job_id, eve_2.sequence_no]]
 

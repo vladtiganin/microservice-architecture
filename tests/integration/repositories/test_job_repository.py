@@ -59,7 +59,7 @@ async def test_jobs_repository_get_returns_jobs_ordered_by_id(session):
 
     ids = [job.id for job in res]
 
-    assert ids == [1,2,3]
+    assert ids == [job_1.id, job_2.id, job_3.id]
 
 
 @pytest.mark.asyncio
@@ -112,7 +112,7 @@ async def test_jobs_repository_get_applies_skip_and_limit(session):
 
     ids = [job.id for job in res]
 
-    assert ids == [2,3]
+    assert ids == [job_2.id, job_3.id]
 
 
 @pytest.mark.asyncio
@@ -129,9 +129,9 @@ async def test_jobs_repository_find_job_by_id_returns_job_when_exists(session):
 
     await repo.add(job, session)
 
-    res = await repo.find_job_by_id(1, session)
+    res = await repo.find_job_by_id(job.id, session)
 
-    assert res.id == 1
+    assert res.id == job.id
 
 
 @pytest.mark.asyncio
