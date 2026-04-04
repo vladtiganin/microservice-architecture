@@ -1,0 +1,77 @@
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+
+from main_service.api.dependencies import (
+    AsyncSessionLocal,
+    create_event_repository_instance,
+    create_job_repository_instance,
+)
+from main_service.models.job_models import Job, JobEvent
+from main_service.schemas.enums import JobEventType, JobStatus
+
+
+async def transition_job(
+    job_id: int,
+    job_status: JobStatus,
+    event_type: JobEventType,
+    payload: str | None = None,
+    result: str | None = None,
+    error: str | None = None,
+):
+    job_repo = create_job_repository_instance()
+    event_repo = create_event_repository_instance()
+
+    async with AsyncSessionLocal() as session:
+        try:
+            job = await job_repo.find_job_by_id(job_id, session)
+            if job is None:
+                return
+
+            job.status = job_status
+            job.payload = payload
+            job.result = result
+            job.error = error
+            define_time_fields(job)
+
+            result_db = await session.execute(
+                select(JobEvent.sequence_no)
+                .where(JobEvent.job_id == job_id)
+                .order_by(JobEvent.sequence_no.desc())
+            )
+
+            last_sequence_no = result_db.scalars().first()
+
+            event = JobEvent(
+                job_id=job.id,
+                event_type=event_type,
+                sequence_no=1 if last_sequence_no is None else last_sequence_no + 1,
+                payload=payload,
+            )
+
+            await event_repo.add(event, session)
+            await session.commit()
+
+            return job
+
+        except Exception:
+            await session.rollback()
+            raise
+
+
+def define_time_fields(job: Job) -> Job:
+    now = datetime.now(timezone.utc)
+
+    match job.status:
+        case JobStatus.PENDING:
+            pass
+        case JobStatus.QUEUED:
+            pass
+        case JobStatus.RUNNING if job.started_at is None:
+            job.started_at = now
+        case JobStatus.RUNNING:
+            job.updated_at = now
+        case JobStatus.SUCCEEDED | JobStatus.FAILED | JobStatus.CANCELLED if job.finished_at is None:
+            job.finished_at = now
+
+    return job

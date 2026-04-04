@@ -14,7 +14,7 @@ class JobsRepository:
         res = await session.execute(statement)
         return res.scalars().all()
 
-    async def add(self, job: Job, session: AsyncSession) -> dict:
+    async def add(self, job: Job, session: AsyncSession) -> Job:
         session.add(job)
         await session.flush()
         return job

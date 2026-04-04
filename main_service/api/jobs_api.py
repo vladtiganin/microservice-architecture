@@ -2,8 +2,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from main_service.api import dependencies
-from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse, JobResponse
+from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse, JobResponse, CreateJobResponse
 from main_service.services import jobs_services
+from asyncio import create_task
+from main_service.services.transition import transition_job
+from main_service.schemas.enums import JobEventType, JobStatus
 
 
 router = APIRouter(
@@ -25,16 +28,20 @@ async def get_jobs(
     )
 
 
-@router.post("", response_model=JobResponse)
+@router.post("", response_model=CreateJobResponse)
 async def post_job(
     job: CreateJobRequest,
     service: jobs_services.JobService = Depends(dependencies.create_job_service_instance),
     session: AsyncSession = Depends(dependencies.get_db_session)
     ):
-    return await service.create_job(
-        job=job, 
-        session=session
-    )
+    res =  await service.create_job(job=job, session=session)
+
+    resp = {
+        "id": res.id,
+        "message": "To track job GET it by id"
+    }
+
+    return res
 
 
 @router.get("/{job_id}", response_model=JobResponse)

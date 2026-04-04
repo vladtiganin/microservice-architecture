@@ -13,6 +13,13 @@ class CreateJobRequest(BaseModel):
     payload: str
 
 
+class CreateJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int 
+    message: str
+
+
 class JobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
