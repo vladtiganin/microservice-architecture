@@ -4,9 +4,10 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
 from main_service.services.jobs_services import JobService
+from main_service.config import settings
 
 engine = create_async_engine(
-    "postgresql+asyncpg://postgres:Avumip42@localhost/db",
+    settings.db_dns,
     echo=True
 )
 
@@ -15,7 +16,6 @@ AsyncSessionLocal = async_sessionmaker(engine)
 async def get_db_session():
     async with AsyncSessionLocal() as session:
         yield session
-
 
 
 event_repo = EventRepository()
