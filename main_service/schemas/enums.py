@@ -14,5 +14,6 @@ class JobEventType(str, enum.Enum):
     CREATED = "created"
     QUEUED = "queued"
     STARTED = "started"
+    RUNNING = "running"
     FINISHED = "finished"
     FAILED = "failed"

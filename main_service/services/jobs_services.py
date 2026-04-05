@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from asyncio import create_task
+from datetime import datetime
 
 from main_service.models.job_models import Job, JobEvent
 from main_service.repositories.event_repository import EventRepository
@@ -46,13 +47,16 @@ class JobService:
             await session.commit()
             await session.refresh(new_job)
 
-        Task = create_task(self.job_executor.run_job(new_job.id))
-
-        transition_job(
+        await transition_job(
             job_id=new_job.id,
             job_status=JobStatus.QUEUED,
             event_type=JobEventType.QUEUED,
+            event_payload={"time" : datetime.now().isoformat()},
+            job_repo=self.job_repo,
+            event_repo=self.event_repo,
         )
+
+        create_task(self.job_executor.run_job(new_job.id))
 
         return new_job
     

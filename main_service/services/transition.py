@@ -2,12 +2,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from main_service.api.dependencies import (
-    AsyncSessionLocal,
-    create_event_repository_instance,
-    create_job_repository_instance,
-)
+from main_service.db.session import AsyncSessionLocal
 from main_service.models.job_models import Job, JobEvent
+from main_service.repositories.event_repository import EventRepository
+from main_service.repositories.jobs_repository import JobsRepository
 from main_service.schemas.enums import JobEventType, JobStatus
 
 
@@ -15,13 +13,13 @@ async def transition_job(
     job_id: int,
     job_status: JobStatus,
     event_type: JobEventType,
-    payload: str | None = None,
+    job_repo: JobsRepository,
+    event_repo: EventRepository,
+    job_payload: str | None = None,
+    event_payload: dict | None = None,
     result: str | None = None,
     error: str | None = None,
 ):
-    job_repo = create_job_repository_instance()
-    event_repo = create_event_repository_instance()
-
     async with AsyncSessionLocal() as session:
         try:
             job = await job_repo.find_job_by_id(job_id, session)
@@ -29,7 +27,7 @@ async def transition_job(
                 return
 
             job.status = job_status
-            job.payload = payload
+            job.payload = job_payload if job_payload is not None else job.payload
             job.result = result
             job.error = error
             define_time_fields(job)
@@ -46,7 +44,8 @@ async def transition_job(
                 job_id=job.id,
                 event_type=event_type,
                 sequence_no=1 if last_sequence_no is None else last_sequence_no + 1,
-                payload=payload,
+                payload=event_payload if event_payload is not None 
+                                        else {"job_payload" : job.payload},
             )
 
             await event_repo.add(event, session)

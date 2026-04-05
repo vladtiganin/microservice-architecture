@@ -1,18 +1,10 @@
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
+from main_service.db.session import AsyncSessionLocal
 from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
 from main_service.services.jobs_services import JobService
 from main_service.services.job_executor import JobExecutor
-from main_service.config import settings
-
-engine = create_async_engine(
-    settings.db_dns,
-    echo=True
-)
-
-AsyncSessionLocal = async_sessionmaker(engine)
 
 async def get_db_session():
     async with AsyncSessionLocal() as session:
@@ -21,7 +13,7 @@ async def get_db_session():
 
 event_repo = EventRepository()
 job_repo = JobsRepository()
-job_executor = JobExecutor()
+job_executor = JobExecutor(job_repo, event_repo)
 
 def pagination_parameters(skip: int = 0, limit: int = 10) -> dict:
     return {
