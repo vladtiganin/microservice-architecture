@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from main_service.api import dependencies
-from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse, JobResponse, CreateJobResponse
-from main_service.services import jobs_services
+from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse, JobResponse, CreateJobResponse, JobStatusResponse, JobEventsListResponse
+from main_service.services import job_service
 from asyncio import create_task
 from main_service.services.transition import transition_job
 from main_service.schemas.enums import JobEventType, JobStatus
@@ -18,7 +18,7 @@ router = APIRouter(
 @router.get("", response_model=JobListResponse)
 async def get_jobs(
     request: dict = Depends(dependencies.pagination_parameters),
-    service: jobs_services.JobService = Depends(dependencies.create_job_service_instance),
+    service: job_service.JobService = Depends(dependencies.create_job_service_instance),
     session: AsyncSession = Depends(dependencies.get_db_session)
     ):
     return await service.get_jobs(
@@ -31,7 +31,7 @@ async def get_jobs(
 @router.post("", response_model=CreateJobResponse)
 async def post_job(
     job: CreateJobRequest,
-    service: jobs_services.JobService = Depends(dependencies.create_job_service_instance),
+    service: job_service.JobService = Depends(dependencies.create_job_service_instance),
     session: AsyncSession = Depends(dependencies.get_db_session)
     ):
     res =  await service.create_job(job=job, session=session)
@@ -47,10 +47,39 @@ async def post_job(
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job_by_id(
     job_id: int,
-    service: jobs_services.JobService = Depends(dependencies.create_job_service_instance),
-    session: AsyncSession =Depends(dependencies.get_db_session)
+    service: job_service.JobService = Depends(dependencies.create_job_service_instance),
+    session: AsyncSession = Depends(dependencies.get_db_session)
     ):
     return await service.get_job_by_id(
         job_id=job_id, 
+        session=session
+    )
+
+
+@router.get("/{job_id}/status", response_model=JobStatusResponse)
+async def get_job_curr_status(
+    job_id: int,
+    service: job_service.JobService = Depends(dependencies.create_job_service_instance),
+    session: AsyncSession = Depends(dependencies.get_db_session)  
+):
+    job = await service.get_job_by_id(job_id, session)
+    return {
+        "id": job.id,
+        "status": job.status,
+        "updated_at": job.updated_at 
+    }
+
+
+@router.get("/{job_id}/events", response_model=JobEventsListResponse)
+async def get_job_events(
+    job_id: int,
+    request: dict = Depends(dependencies.pagination_parameters),
+    service: job_service.JobService = Depends(dependencies.create_job_service_instance),
+    session: AsyncSession = Depends(dependencies.get_db_session)    
+):
+    return await service.get_job_events_by_id(
+        job_id=job_id,
+        skip=request["skip"],
+        limit=request["limit"],
         session=session
     )

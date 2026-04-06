@@ -3,7 +3,7 @@ from fastapi import Depends
 from main_service.db.session import AsyncSessionLocal
 from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
-from main_service.services.jobs_services import JobService
+from main_service.services.job_service import JobService
 from main_service.services.job_executor import JobExecutor
 
 async def get_db_session():

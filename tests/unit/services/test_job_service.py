@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock, AsyncMock
 
-from main_service.services.jobs_services import JobService
+from main_service.services.job_service import JobService
 from main_service.schemas.jobs_schemas import CreateJobRequest
 from main_service.models.job_models import Job
 from main_service.schemas.enums import JobStatus, JobEventType

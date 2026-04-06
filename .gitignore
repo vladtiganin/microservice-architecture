@@ -1,5 +1,5 @@
 venv/
-requirements.txt
+*.txt
 __pycache__/
 *.pyc
 alembic.ini

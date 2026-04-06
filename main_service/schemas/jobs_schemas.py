@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from main_service.schemas.enums import JobStatus
+from main_service.schemas.enums import JobStatus, JobEventType
 from datetime import datetime
 
 
@@ -37,3 +37,24 @@ class JobResponse(BaseModel):
 
 class JobListResponse(BaseModel):
     items: list[JobResponse]
+
+
+class JobStatusResponse(BaseModel):
+    id: int 
+    status: JobStatus
+    updated_at: datetime 
+
+
+class JobEventResponse(BaseModel):
+    id: int 
+    job_id: int
+    event_type: JobEventType
+    sequence_no: int
+    payload: dict
+    created_at: datetime
+
+
+
+
+class JobEventsListResponse(BaseModel):
+    items: list[JobEventResponse]
