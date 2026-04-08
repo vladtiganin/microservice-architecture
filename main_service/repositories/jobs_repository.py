@@ -1,13 +1,12 @@
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, exists
 
 from main_service.models.job_models import Job
 
 
 class JobsRepository:
     def __init__(self):
-        self.storage = []
+        pass
 
     async def get(self, session: AsyncSession, skip: int = 0, limit: int = 10) -> list[Job]:
         statement = select(Job).order_by(Job.id).offset(skip).limit(limit)
@@ -24,3 +23,9 @@ class JobsRepository:
         statement = select(Job).where(Job.id == job_id)
         res = await session.execute(statement)
         return res.scalar_one_or_none()
+    
+
+    async def job_exist(self, job_id: int, session: AsyncSession) -> bool:
+        statement = select(exists().where(Job.id == job_id))
+        res = await session.execute(statement)
+        return res.scalar()

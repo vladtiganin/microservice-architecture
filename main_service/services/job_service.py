@@ -1,7 +1,9 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from asyncio import create_task
 from datetime import datetime
+import json
+import asyncio
 
 from main_service.models.job_models import Job, JobEvent
 from main_service.repositories.event_repository import EventRepository
@@ -10,6 +12,7 @@ from main_service.schemas.enums import JobStatus, JobEventType
 from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse
 from main_service.services.job_executor import JobExecutor
 from main_service.services.transition import transition_job
+from main_service.db.session import AsyncSessionLocal
 
 
 class JobService:
@@ -71,3 +74,53 @@ class JobService:
 
     async def get_job_events_by_id(self, job_id: int, session: AsyncSession, skip: int = 0, limit: int = 25) -> list[JobEvent]:
         return {"items" : await self.event_repo.get(job_id, session, skip, limit)}
+    
+
+    async def generate_sse_job_event_stream(self, job_id: int, request:Request, last_sse_event_id: int | None = None):
+        async with AsyncSessionLocal() as session:
+            res = await self.job_repo.job_exist(job_id, session)
+            if not res:
+                raise HTTPException(404, "Job not found")
+
+
+        sse_evet_id = last_sse_event_id if last_sse_event_id is not None else 0
+        while True:
+            if await request.is_disconnected():
+                break
+
+            async with AsyncSessionLocal() as session:
+                event = await self.event_repo.get(
+                    job_id=job_id,
+                    session=session,
+                    skip=sse_evet_id,
+                    limit=1
+                )
+                if not event:
+                    yield ': ping\n\n'
+                    await asyncio.sleep(0.5)
+                    continue
+
+                event = event[0]
+                event_data = {
+                "id": event.id,
+                "job_id": event.job_id,
+                "event_type": event.event_type.value,
+                "sequence_no": event.sequence_no,
+                "payload": event.payload,
+                "created_at": event.created_at.isoformat(),
+                }
+                resp = f'id: {event.sequence_no}\nevent: {event.event_type}\ndata: {json.dumps(event_data)}\n\n'
+                yield resp
+
+                if event.event_type in {JobEventType.FINISHED, JobEventType.FAILED}:
+                    break
+
+                sse_evet_id = event.sequence_no
+
+
+
+     
+
+
+
+

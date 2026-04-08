@@ -1,12 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from main_service.api import dependencies
 from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse, JobResponse, CreateJobResponse, JobStatusResponse, JobEventsListResponse
 from main_service.services import job_service
-from asyncio import create_task
-from main_service.services.transition import transition_job
-from main_service.schemas.enums import JobEventType, JobStatus
 
 
 router = APIRouter(
@@ -83,3 +81,21 @@ async def get_job_events(
         limit=request["limit"],
         session=session
     )
+
+
+@router.get("/{job_id}/events/stream") 
+async def get_job_events_stream(
+    job_id: int,
+    request: Request,
+    service: job_service.JobService = Depends(dependencies.create_job_service_instance),
+) -> StreamingResponse:
+    last_sse_event_header = request.headers.get("last-event-id")
+    last_sse_event_id = int(last_sse_event_header) if last_sse_event_header is not None else 0
+    return StreamingResponse(
+        service.generate_sse_job_event_stream(job_id, request, last_sse_event_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control" : "no-cache",
+            "Connection": "keep-alive"
+        }
+    ) 
