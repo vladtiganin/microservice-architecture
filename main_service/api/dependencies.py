@@ -3,8 +3,11 @@ from fastapi import Depends
 from main_service.db.session import AsyncSessionLocal
 from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
+from main_service.repositories.webhook_repository import WebhookRepository
 from main_service.services.job_service import JobService
 from main_service.services.job_executor import JobExecutor
+from main_service.services.webhook_service import WebhookService
+
 
 async def get_db_session():
     async with AsyncSessionLocal() as session:
@@ -13,7 +16,9 @@ async def get_db_session():
 
 event_repo = EventRepository()
 job_repo = JobsRepository()
-job_executor = JobExecutor(job_repo, event_repo)
+webhook_repo = WebhookRepository()
+webhook_service = WebhookService(job_repo, webhook_repo)
+job_executor = JobExecutor(job_repo, event_repo, webhook_service)
 
 def pagination_parameters(skip: int = 0, limit: int = 10) -> dict:
     return {
@@ -22,8 +27,16 @@ def pagination_parameters(skip: int = 0, limit: int = 10) -> dict:
     }
 
 
+def create_webhook_service_instance() -> WebhookService:
+    return webhook_service
+
+
 def create_event_repository_instance() -> EventRepository:
     return event_repo
+
+
+def create_webhook_repository_instance() -> WebhookRepository:
+    return webhook_repo
 
 
 def create_job_executor_instance() -> JobExecutor:
