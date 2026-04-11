@@ -72,7 +72,7 @@ class JobService:
         return job
 
 
-    async def get_job_events_by_id(self, job_id: int, session: AsyncSession, skip: int = 0, limit: int = 25) -> list[JobEvent]:
+    async def get_job_events_by_id(self, job_id: int, session: AsyncSession, skip: int = 0, limit: int = 25) -> dict["items":list(JobEvent)]:
         return {"items" : await self.event_repo.get(job_id, session, skip, limit)}
     
 

@@ -1,5 +1,7 @@
 import asyncio
-
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
+import threading
 import httpx
 
 from enums import *
@@ -115,10 +117,58 @@ class Client:
         return event_sse_id
 
 
+    async def webhook_subscribe(self, job_id: int, target_url: str):
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f'{self.url}/webhook', json={
+                "job_id": job_id,
+                "target_url": target_url
+            })
+            resp.raise_for_status()
+            print("Webhook subscribed:")
+            print(json.dumps(resp.json(), indent=2, ensure_ascii=False, default=str))
+
+
+class Receiver(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        return
+
+    def do_POST(self):
+        if self.path == "/webhook":
+            content_length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(content_length).decode("utf-8")
+
+            print("Webhook received")
+            print(f"Path: {self.path}")
+            print(f"Signature: {self.headers.get('X-Webhook-Signature')}")
+            try:
+                print(json.dumps(json.loads(body), indent=2, ensure_ascii=False))
+            except json.JSONDecodeError:
+                print(body)
+            print("==================================")
+
+            self.send_response(200)
+            self.end_headers()
+        else:
+            self.send_response(500)
+            self.end_headers()
+
+
+
 async def main():
     client = Client(url="http://127.0.0.1:8000")
-    job_id = await client.create_job(type="sse", payload="client")
-    last_id = await client.event_sse(job_id=job_id, event_sse_id=2)
+    server = HTTPServer(("0.0.0.0", 4321), Receiver)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    print("Webhook receiver listening on http://localhost:4321/webhook")
+
+    try:
+        job_id = await client.create_job(type="webhook", payload="client")
+        await client.webhook_subscribe(job_id, target_url="http://localhost:4321/webhook")
+        print("Waiting for webhook.")
+        await asyncio.Event().wait()
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 if __name__ == "__main__":

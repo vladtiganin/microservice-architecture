@@ -31,7 +31,7 @@ class WebhookService:
         try:
             webhook= WebhookSubscription(
                 job_id=webhook_req.job_id,
-                target_url=webhook_req.target_url,
+                target_url=str(webhook_req.target_url),
                 secret=secrets.token_hex(32),
                 is_active=True
             )
