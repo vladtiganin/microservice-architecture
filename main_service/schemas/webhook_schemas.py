@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, HttpUrl
 class CreateWebhookRequest(BaseModel):
     job_id: int
     target_url: HttpUrl
-    
+
 
 class CreateWebhookResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -16,4 +16,8 @@ class CreateWebhookResponse(BaseModel):
     secret: str
     created_at: datetime
 
+
+class DeleteWebhookResponse(BaseModel):
+    id: int
+    result: str
 

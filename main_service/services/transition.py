@@ -1,12 +1,12 @@
-from datetime import datetime, timezone
-
-from sqlalchemy import select
-
-from main_service.db.session import AsyncSessionLocal
-from main_service.models.job_models import Job, JobEvent
 from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
 from main_service.schemas.enums import JobEventType, JobStatus
+from main_service.models.job_models import Job, JobEvent
+from main_service.db.session import AsyncSessionLocal
+
+from datetime import datetime, timezone
+from sqlalchemy import select
+
 
 
 async def transition_job(

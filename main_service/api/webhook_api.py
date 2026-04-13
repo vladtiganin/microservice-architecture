@@ -22,3 +22,11 @@ async def post_webhook(
     return webhook
 
 
+@router.delete("/{webhook_id}", response_model=DeleteWebhookResponse)
+async def delete_webhook(
+    webhook_id: int,
+    webhook_service: WebhookService = Depends(create_webhook_service_instance),
+    session: AsyncSession = Depends(get_db_session)
+):
+    return await webhook_service.delete_by_id(webhook_id, session)
+

@@ -1,18 +1,18 @@
-from main_service.schemas.webhook_schemas import CreateWebhookRequest
-from main_service.models.webhook_models import WebhookSubscription
-from main_service.repositories.jobs_repository import JobsRepository
 from main_service.repositories.webhook_repository import WebhookRepository
-from main_service.db.session import AsyncSessionLocal
+from main_service.schemas.webhook_schemas import CreateWebhookRequest
+from main_service.repositories.jobs_repository import JobsRepository
+from main_service.models.webhook_models import WebhookSubscription
 from main_service.schemas.enums import WebhookDeliveryStatus
+from main_service.db.session import AsyncSessionLocal
 
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.encoders import jsonable_encoder
+from datetime import datetime, timezone
+from fastapi import HTTPException
+from hashlib import sha256
 import asyncio
 import secrets
-from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
-from datetime import datetime, timezone
-from hashlib import sha256
 import hmac
 import json
 
@@ -149,3 +149,21 @@ class WebhookService:
             "status_code": status_code,
             "error": last_error
         }
+
+
+    async def delete_by_id(self, webhook_id: int, session: AsyncSession) -> dict:
+        if not await self.webhook_repo.webhook_exist(webhook_id, session):
+            raise HTTPException(status_code=404, detail="Webhook does not exists")
+        
+        try:
+            await self.webhook_repo.delete(webhook_id, session)
+
+            return {
+            "id": webhook_id,
+            "result": "Webhook deleted"
+        }
+        except Exception:
+            await session.rollback()
+        await session.commit()
+
+        

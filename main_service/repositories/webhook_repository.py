@@ -1,7 +1,7 @@
 from main_service.models.webhook_models import *
 from main_service.schemas.enums import WebhookDeliveryStatus
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, exists, delete
 
 
 class WebhookRepository:
@@ -33,5 +33,17 @@ class WebhookRepository:
             )
         
         await session.execute(statement)
+
+
+    async def webhook_exist(self, webhook_id: int, session: AsyncSession) -> bool:
+        statement = select(exists().where(WebhookSubscription.id == webhook_id))
+        res = await session.execute(statement)
+        return res.scalar()
+    
+
+    async def delete(self, webhook_id: int, session: AsyncSession) -> None:
+        statement = delete(WebhookSubscription).where(WebhookSubscription.id == webhook_id)
+        await session.execute(statement)
+        
 
 

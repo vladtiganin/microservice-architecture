@@ -1,11 +1,12 @@
 from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
 from main_service.services.webhook_service import WebhookService
-from main_service.db.session import AsyncSessionLocal
-from main_service.services.transition import transition_job
 from main_service.schemas.enums import JobEventType, JobStatus
+from main_service.services.transition import transition_job
+from main_service.db.session import AsyncSessionLocal
 
 import asyncio
+
 
 class JobExecutor:
     def __init__(self, job_repo: JobsRepository, event_repo: EventRepository, webhook_service: WebhookService):

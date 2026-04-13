@@ -1,18 +1,18 @@
-from fastapi import HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from asyncio import create_task
-from datetime import datetime
-import json
-import asyncio
-
-from main_service.models.job_models import Job, JobEvent
+from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse
 from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
 from main_service.schemas.enums import JobStatus, JobEventType
-from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse
-from main_service.services.job_executor import JobExecutor
 from main_service.services.transition import transition_job
+from main_service.services.job_executor import JobExecutor
+from main_service.models.job_models import Job, JobEvent
 from main_service.db.session import AsyncSessionLocal
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException, Request
+from asyncio import create_task
+from datetime import datetime
+import asyncio
+import json
 
 
 class JobService:
