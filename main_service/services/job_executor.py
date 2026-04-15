@@ -69,7 +69,7 @@ class JobExecutor:
             event_type=JobEventType.FAILED,
             job_repo=self.job_repo,
             event_repo=self.event_repo,
-            event_payload={"error" : "Somthig goes wrong during executing program."},
+            event_payload={"error" : "Something goes wrong during executing program."},
             job_payload=job.payload,
             error=type(ex).__name__
         )  

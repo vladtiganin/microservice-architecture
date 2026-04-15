@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+message ExecuteJobRequest {
+    int64 job_id = 1;
+    string type = 2;
+    string payload = 3;
+}
+
+message ExecuteJobResponse {
+    int32 progres = 1;
+    string status = 2;
+    string result = 3;
+    string error = 4;
+}
+
+service Executor{
+    rpc ExecuteJob(ExecuteJobRequest) returns (stream ExecuteJobResponse);
+}
+

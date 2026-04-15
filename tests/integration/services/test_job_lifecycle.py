@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import AsyncMock
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -17,6 +18,11 @@ from main_service.services import transition as transition_module
 class StubExecutor:
     async def run_job(self, job_id: int) -> None:
         return None
+
+
+class StubWebhookService:
+    def __init__(self):
+        self.dispatch_job_event = AsyncMock()
 
 
 def _patch_test_sessionmakers(monkeypatch, engine):
@@ -84,7 +90,12 @@ async def test_job_executor_completes_lifecycle_and_persists_progress_events(ses
     job_repo = JobsRepository()
     event_repo = EventRepository()
     service = JobService(job_repo=job_repo, event_repo=event_repo, job_executor=StubExecutor())
-    executor = JobExecutor(job_repo=job_repo, event_repo=event_repo)
+    webhook_service = StubWebhookService()
+    executor = JobExecutor(
+        job_repo=job_repo,
+        event_repo=event_repo,
+        webhook_service=webhook_service,
+    )
 
     created_job = await service.create_job(
         CreateJobRequest(type="email", payload="hello"),
@@ -117,3 +128,4 @@ async def test_job_executor_completes_lifecycle_and_persists_progress_events(ses
         JobEventType.FINISHED,
     ]
     assert events[-1].payload == {"progress": "100%"}
+    webhook_service.dispatch_job_event.assert_awaited_once_with(job_id=created_job.id)

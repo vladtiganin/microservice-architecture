@@ -1,8 +1,8 @@
-import pytest
-import asyncio
+import main_service.models.webhook_models  # noqa: F401
 import pytest_asyncio
+from sqlalchemy import delete
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from main_service.models.job_models import Base
@@ -22,7 +22,11 @@ async def engine():
 
 @pytest_asyncio.fixture
 async def session(engine):
-    SessionLocal = async_sessionmaker(bind=engine,class_=AsyncSession,expire_on_commit=False)
+    SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     async with SessionLocal() as session:
         yield session
         await session.rollback()
+
+    async with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(delete(table))

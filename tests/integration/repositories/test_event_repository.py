@@ -1,10 +1,11 @@
 import pytest
 
-from main_service.models.job_models import JobEvent, Job
+from sqlalchemy import select
+
+from main_service.models.job_models import Job, JobEvent
 from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
 from main_service.schemas.enums import JobEventType, JobStatus
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 
@@ -183,4 +184,73 @@ async def test_event_repository_add_allows_same_sequence_no_for_different_jobs(s
     seques = [[eve.job_id, eve.sequence_no] for eve in res]
 
     assert seques == [[eve_1.job_id, eve_1.sequence_no], [eve_2.job_id, eve_2.sequence_no]]
+
+
+@pytest.mark.asyncio
+async def test_event_repository_get_filters_by_job_id_and_applies_skip_and_limit(session):
+    event_repo = EventRepository()
+    job_repo = JobsRepository()
+
+    job = await job_repo.add(
+        Job(
+            type="email",
+            status=JobStatus.PENDING,
+            payload="hello",
+            result=None,
+            error=None,
+        ),
+        session,
+    )
+    other_job = await job_repo.add(
+        Job(
+            type="email",
+            status=JobStatus.PENDING,
+            payload="other",
+            result=None,
+            error=None,
+        ),
+        session,
+    )
+
+    await event_repo.add(
+        JobEvent(
+            job_id=job.id,
+            event_type=JobEventType.CREATED,
+            sequence_no=1,
+            payload={"progress": "0%"},
+        ),
+        session,
+    )
+    await event_repo.add(
+        JobEvent(
+            job_id=job.id,
+            event_type=JobEventType.RUNNING,
+            sequence_no=2,
+            payload={"progress": "50%"},
+        ),
+        session,
+    )
+    await event_repo.add(
+        JobEvent(
+            job_id=job.id,
+            event_type=JobEventType.FINISHED,
+            sequence_no=3,
+            payload={"progress": "100%"},
+        ),
+        session,
+    )
+    await event_repo.add(
+        JobEvent(
+            job_id=other_job.id,
+            event_type=JobEventType.CREATED,
+            sequence_no=1,
+            payload={"type": "email"},
+        ),
+        session,
+    )
+
+    result = await event_repo.get(job_id=job.id, session=session, skip=1, limit=2)
+
+    assert [event.sequence_no for event in result] == [2, 3]
+    assert all(event.job_id == job.id for event in result)
 
