@@ -3,7 +3,6 @@ from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
 from main_service.schemas.enums import JobStatus, JobEventType
 from main_service.services.transition import transition_job
-from main_service.services.job_executor import JobExecutor
 from main_service.models.job_models import Job, JobEvent
 from main_service.db.session import AsyncSessionLocal
 
@@ -16,6 +15,7 @@ from asyncio import create_task
 from datetime import datetime
 import asyncio
 import json
+import grpc
 
 
 class JobService:
@@ -73,28 +73,50 @@ class JobService:
             payload=job.payload
         )
 
-        resp_stream = self.job_executor.ExecuteJob(req)
-        async for resp in resp_stream:
-            event_type, job_status = JobService._defite_status_type(resp.status)
+        try:
+            resp_stream = self.job_executor.ExecuteJob(req, timeout=60)
+            async for resp in resp_stream:
+                event_type, job_status = JobService._define_status_type(resp.status)
 
+                await transition_job(
+                    job_id=job.id,
+                    job_status=job_status,
+                    event_type=event_type,
+                    job_repo=self.job_repo,
+                    event_repo=self.event_repo,
+                    event_payload={"progress": f"{resp.progress}%"},
+                    result=resp.result if resp.result else None,
+                    error=resp.error if resp.error else None
+                )
+        except grpc.aio.AioRpcError as ex:
             await transition_job(
-                job_id=job.id,
-                job_status=job_status,
-                event_type=event_type,
-                job_repo=self.job_repo,
-                event_repo=self.event_repo,
-                event_payload={"progress": f"{resp.progress}%"},
-                result=resp.result if resp.result else None,
-                error=resp.error if resp.error else None
-            )
+                    job_id=job.id,
+                    job_status=JobStatus.FAILED,
+                    event_type=JobEventType.FAILED,
+                    job_repo=self.job_repo,
+                    event_repo=self.event_repo,
+                    event_payload={"grpc_error": ex.code().name},
+                    error=ex.details() or ex.code().name
+                )
+        except Exception as ex:
+            await transition_job(
+                    job_id=job.id,
+                    job_status=JobStatus.FAILED,
+                    event_type=JobEventType.FAILED,
+                    job_repo=self.job_repo,
+                    event_repo=self.event_repo,
+                    event_payload={"error_type": type(ex).__name__},
+                    error=str(ex)
+                )
 
     
     @staticmethod
-    def _defite_status_type(status: str) -> list:
+    def _define_status_type(status: str) -> list:
         match status:
             case "running": return (JobEventType.RUNNING, JobStatus.RUNNING)
             case "finished": return (JobEventType.FINISHED, JobStatus.SUCCEEDED)
             case "failed": return (JobEventType.FAILED, JobStatus.FAILED) 
+            case _: raise ValueError("Unknown status received")
     
 
     async def get_job_by_id(self, job_id: int, session: AsyncSession) -> Job:

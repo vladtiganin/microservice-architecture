@@ -6,7 +6,6 @@ from main_service.repositories.event_repository import EventRepository
 from main_service.repositories.jobs_repository import JobsRepository
 from main_service.repositories.webhook_repository import WebhookRepository
 from main_service.services.job_service import JobService
-from main_service.services.job_executor import JobExecutor
 from main_service.services.webhook_service import WebhookService
 from main_service.config import settings
 from contracts.executor_pb2_grpc import ExecutorStub 
@@ -16,7 +15,6 @@ event_repo = EventRepository()
 job_repo = JobsRepository()
 webhook_repo = WebhookRepository()
 webhook_service = WebhookService(job_repo, webhook_repo)
-job_executor = JobExecutor(job_repo, event_repo, webhook_service)
 
 channel = grpc.aio.insecure_channel(f"{settings.executor_service_address}")
 stab = ExecutorStub(channel)
@@ -45,7 +43,7 @@ def create_webhook_repository_instance() -> WebhookRepository:
     return webhook_repo
 
 
-def create_job_executor_instance() -> JobExecutor:
+def create_job_executor_instance() -> ExecutorStub:
     return stab
 
 
@@ -56,6 +54,6 @@ def create_job_repository_instance() -> JobsRepository:
 def create_job_service_instance(
         job_repo: JobsRepository = Depends(create_job_repository_instance),
         event_repo: EventRepository = Depends(create_event_repository_instance),
-        job_executor: JobExecutor = Depends(create_job_executor_instance),
+        job_executor: ExecutorStub = Depends(create_job_executor_instance),
         ) -> JobService:
     return JobService(job_repo, event_repo, job_executor)

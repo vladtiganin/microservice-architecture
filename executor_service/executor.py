@@ -94,13 +94,18 @@ class Executor(executor_pb2_grpc.ExecutorServicer):
             yield executor_pb2.ExecuteJobResponse(
                 progress=100,
                 status="finished",
+                result="job completed successfully"
             )
+        except asyncio.CancelledError:
+             logger.info("RPC cancelled for job_id=%s", request.job_id)
+             raise
         except Exception as ex:
             logger.exception("Execution failed for job_id=%s", request.job_id)
-            yield executor_pb2.ExecuteJobResponse(
-                error="Somethin goes wrong during executing",
-                status="failed"
-            )
+            if not context.cancelled():
+                yield executor_pb2.ExecuteJobResponse(
+                    error="Something goes wrong during execution",
+                    status="failed"
+                )
 
 
 
