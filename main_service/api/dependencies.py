@@ -46,7 +46,7 @@ def create_webhook_repository_instance() -> WebhookRepository:
 
 
 def create_job_executor_instance() -> JobExecutor:
-    return job_executor
+    return stab
 
 
 def create_job_repository_instance() -> JobsRepository:
@@ -56,6 +56,6 @@ def create_job_repository_instance() -> JobsRepository:
 def create_job_service_instance(
         job_repo: JobsRepository = Depends(create_job_repository_instance),
         event_repo: EventRepository = Depends(create_event_repository_instance),
-        job_executor: JobExecutor = Depends(create_job_executor_instance)
+        job_executor: JobExecutor = Depends(create_job_executor_instance),
         ) -> JobService:
     return JobService(job_repo, event_repo, job_executor)

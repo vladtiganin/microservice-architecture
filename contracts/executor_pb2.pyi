@@ -15,13 +15,13 @@ class ExecuteJobRequest(_message.Message):
     def __init__(self, job_id: _Optional[int] = ..., type: _Optional[str] = ..., payload: _Optional[str] = ...) -> None: ...
 
 class ExecuteJobResponse(_message.Message):
-    __slots__ = ("progres", "status", "result", "error")
-    PROGRES_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("progress", "status", "result", "error")
+    PROGRESS_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
-    progres: int
+    progress: int
     status: str
     result: str
     error: str
-    def __init__(self, progres: _Optional[int] = ..., status: _Optional[str] = ..., result: _Optional[str] = ..., error: _Optional[str] = ...) -> None: ...
+    def __init__(self, progress: _Optional[int] = ..., status: _Optional[str] = ..., result: _Optional[str] = ..., error: _Optional[str] = ...) -> None: ...

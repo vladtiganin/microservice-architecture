@@ -7,7 +7,7 @@ message ExecuteJobRequest {
 }
 
 message ExecuteJobResponse {
-    int32 progres = 1;
+    int32 progress = 1;
     string status = 2;
     string result = 3;
     string error = 4;

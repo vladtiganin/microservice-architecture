@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x65xecutor.proto\"B\n\x11\x45xecuteJobRequest\x12\x0e\n\x06job_id\x18\x01 \x01(\x03\x12\x0c\n\x04type\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\t\"T\n\x12\x45xecuteJobResponse\x12\x0f\n\x07progres\x18\x01 \x01(\x05\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0e\n\x06result\x18\x03 \x01(\t\x12\r\n\x05\x65rror\x18\x04 \x01(\t2C\n\x08\x45xecutor\x12\x37\n\nExecuteJob\x12\x12.ExecuteJobRequest\x1a\x13.ExecuteJobResponse0\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x65xecutor.proto\"B\n\x11\x45xecuteJobRequest\x12\x0e\n\x06job_id\x18\x01 \x01(\x03\x12\x0c\n\x04type\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\t\"U\n\x12\x45xecuteJobResponse\x12\x10\n\x08progress\x18\x01 \x01(\x05\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0e\n\x06result\x18\x03 \x01(\t\x12\r\n\x05\x65rror\x18\x04 \x01(\t2C\n\x08\x45xecutor\x12\x37\n\nExecuteJob\x12\x12.ExecuteJobRequest\x1a\x13.ExecuteJobResponse0\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,7 +34,7 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_EXECUTEJOBREQUEST']._serialized_start=18
   _globals['_EXECUTEJOBREQUEST']._serialized_end=84
   _globals['_EXECUTEJOBRESPONSE']._serialized_start=86
-  _globals['_EXECUTEJOBRESPONSE']._serialized_end=170
-  _globals['_EXECUTOR']._serialized_start=172
-  _globals['_EXECUTOR']._serialized_end=239
+  _globals['_EXECUTEJOBRESPONSE']._serialized_end=171
+  _globals['_EXECUTOR']._serialized_start=173
+  _globals['_EXECUTOR']._serialized_end=240
 # @@protoc_insertion_point(module_scope)
