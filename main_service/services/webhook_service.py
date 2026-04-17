@@ -158,6 +158,7 @@ class WebhookService:
         try:
             await self.webhook_repo.delete(webhook_id, session)
 
+            await session.commit()
             return {
             "id": webhook_id,
             "result": "Webhook deleted"

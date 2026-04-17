@@ -1,0 +1,25 @@
+syntax = "proto3";
+import "google/protobuf/timestamp.proto";
+
+message WebhookPayload {
+    int64 job_id = 1;
+    string job_status = 2;
+    google.protobuf.Timestamp finished_at = 3;
+}
+
+message SendWebhookRequest {
+    int64 webhook_id = 1;
+    string target_url = 2;
+    WebhookPayload payload = 3;
+    string secret = 4;
+}
+
+message SendWebhookResponse {
+    int64 webhook_id = 1;
+    string status = 2;
+    string error = 3;
+}
+
+service WebhookSender{
+    rpc SendWebhook(SendWebhookRequest) returns (SendWebhookResponse);
+}
