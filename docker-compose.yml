@@ -1,6 +1,77 @@
 version: '3.9'
 
 services:
+  webhook_service:
+    build: 
+      context: .
+      dockerfile: ./webhook_service/dockerfile
+    container_name: webhook_service
+    restart: unless-stopped
+    ports:
+      - "2121:2121"
+    command: python -m webhook_service.webhook
+    networks:
+      - job-executor-service
+  executor_service:
+    build: 
+      context: .
+      dockerfile: ./executor_service/dockerfile
+    container_name: executor_service
+    restart: unless-stopped
+    ports:
+      - "4343:4343"
+    command: python -m executor_service.executor
+    networks:
+      - job-executor-service
+    
+    
+  main_service:
+    build: 
+      context: .
+      dockerfile: ./main_service/dockerfile
+    container_name: main_service
+    restart: unless-stopped
+    env_file:
+      - ./main_service/.env
+    ports:
+      - "8000:8000"
+    command: uvicorn main_service.main:app --host 0.0.0.0 --port 8000
+    networks:
+      - job-executor-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      executor_service:
+        condition: service_started
+      webhook_service:
+        condition: service_started 
+        
+
+  postgres_db:
+    image: postgres:16
+    container_name: postgres_db
+    ports:
+      - "5434:5432"
+    networks:
+      - job-executor-service
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d db"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
+
   postgres_test:
     image: postgres:16
     container_name: postgres_test_jobs
@@ -16,3 +87,7 @@ services:
       timeout: 30s
       retries: 5
       start_period: 30s
+
+networks:
+  job-executor-service:
+    driver: bridge

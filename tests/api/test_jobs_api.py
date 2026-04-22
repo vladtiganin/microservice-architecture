@@ -251,3 +251,22 @@ async def test_get_job_status_returns_job_status_payload(simple_async_client: ht
         "status": "running",
         "updated_at": "2026-04-13T11:00:00Z",
     }
+
+
+@pytest.mark.asyncio
+async def test_get_job_status_returns_404_when_job_is_missing(
+    simple_async_client: httpx.AsyncClient,
+):
+    service_mock = Mock()
+    service_mock.get_job_by_id = AsyncMock(
+        side_effect=HTTPException(status_code=404, detail="Job with this id not found")
+    )
+    app.dependency_overrides[dependencies.create_job_service_instance] = lambda: service_mock
+
+    try:
+        response = await simple_async_client.get("/jobs/7/status")
+    finally:
+        app.dependency_overrides.clear()
+
+    service_mock.get_job_by_id.assert_awaited_once_with(7, ANY)
+    assert response.status_code == 404

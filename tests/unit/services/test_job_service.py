@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -28,6 +29,18 @@ class SessionFactory:
 
     def __call__(self):
         return SessionContext(self.sessions.pop(0))
+
+
+class FakeRpcError(Exception):
+    def __init__(self, code_name="UNAVAILABLE", details="transport down"):
+        self._code = SimpleNamespace(name=code_name)
+        self._details = details
+
+    def code(self):
+        return self._code
+
+    def details(self):
+        return self._details
 
 
 @pytest.fixture
@@ -66,8 +79,13 @@ async def test_create_job_creates_pending_job_created_event_and_background_work(
     session = AsyncMock()
     transition_mock = AsyncMock()
     scheduled = []
+    scheduled_job = None
+    scheduled_name = None
 
     def fake_create_task(coro):
+        nonlocal scheduled_job, scheduled_name
+        scheduled_name = coro.cr_code.co_name
+        scheduled_job = coro.cr_frame.f_locals["job"]
         scheduled.append(coro)
         coro.close()
         return Mock()
@@ -98,7 +116,9 @@ async def test_create_job_creates_pending_job_created_event_and_background_work(
     assert transition_kwargs["job_repo"] is job_repo
     assert transition_kwargs["event_repo"] is event_repo
     assert "time" in transition_kwargs["event_payload"]
-    job_executor.run_job.assert_called_once_with(1)
+    job_executor.run_job.assert_not_called()
+    assert scheduled_name == "_manage_job_executing"
+    assert scheduled_job is stored_job
     assert len(scheduled) == 1
 
 
@@ -172,6 +192,139 @@ async def test_get_job_events_by_id_returns_items_from_repository(job_service_fi
 
     event_repo.get.assert_awaited_once_with(7, session, 2, 3)
     assert result == {"items": [first_event, second_event]}
+
+
+def test_define_status_type_maps_known_statuses():
+    assert JobService._define_status_type("running") == (
+        JobEventType.RUNNING,
+        JobStatus.RUNNING,
+    )
+    assert JobService._define_status_type("finished") == (
+        JobEventType.FINISHED,
+        JobStatus.SUCCEEDED,
+    )
+    assert JobService._define_status_type("failed") == (
+        JobEventType.FAILED,
+        JobStatus.FAILED,
+    )
+
+
+def test_define_status_type_raises_value_error_for_unknown_status():
+    with pytest.raises(ValueError, match="Unknown status received"):
+        JobService._define_status_type("mystery")
+
+
+@pytest.mark.asyncio
+async def test_manage_job_executing_consumes_grpc_stream_and_transitions_job(monkeypatch):
+    transition_mock = AsyncMock()
+    calls = []
+
+    class FakeExecutor:
+        def ExecuteJob(self, request, timeout):
+            calls.append((request, timeout))
+
+            async def resp_stream():
+                yield SimpleNamespace(status="running", progress=10, result="", error="")
+                yield SimpleNamespace(
+                    status="finished",
+                    progress=100,
+                    result="done",
+                    error="",
+                )
+
+            return resp_stream()
+
+    service = JobService(job_repo=Mock(), event_repo=Mock(), job_executor=FakeExecutor())
+    job = Job(id=7, type="email", payload="hello", status=JobStatus.PENDING)
+    monkeypatch.setattr(job_service_module, "transition_job", transition_mock)
+
+    await service._manage_job_executing(job)
+
+    request, timeout = calls[0]
+    statuses = [call.kwargs["job_status"] for call in transition_mock.await_args_list]
+    event_types = [call.kwargs["event_type"] for call in transition_mock.await_args_list]
+
+    assert request.job_id == 7
+    assert request.type == "email"
+    assert request.payload == "hello"
+    assert timeout == 60
+    assert statuses == [JobStatus.RUNNING, JobStatus.SUCCEEDED]
+    assert event_types == [JobEventType.RUNNING, JobEventType.FINISHED]
+    assert transition_mock.await_args_list[0].kwargs["event_payload"] == {"progress": "10%"}
+    assert transition_mock.await_args_list[-1].kwargs["result"] == "done"
+    assert transition_mock.await_args_list[-1].kwargs["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_manage_job_executing_marks_job_failed_on_grpc_error(monkeypatch):
+    transition_mock = AsyncMock()
+
+    class FakeExecutor:
+        def ExecuteJob(self, request, timeout):
+            raise FakeRpcError(code_name="UNAVAILABLE", details="grpc down")
+
+    service = JobService(job_repo=Mock(), event_repo=Mock(), job_executor=FakeExecutor())
+    job = Job(id=7, type="email", payload="hello", status=JobStatus.PENDING)
+
+    monkeypatch.setattr(job_service_module, "transition_job", transition_mock)
+    monkeypatch.setattr(job_service_module.grpc.aio, "AioRpcError", FakeRpcError)
+
+    await service._manage_job_executing(job)
+
+    transition_kwargs = transition_mock.await_args.kwargs
+
+    assert transition_kwargs["job_id"] == 7
+    assert transition_kwargs["job_status"] == JobStatus.FAILED
+    assert transition_kwargs["event_type"] == JobEventType.FAILED
+    assert transition_kwargs["event_payload"] == {"grpc_error": "UNAVAILABLE"}
+    assert transition_kwargs["error"] == "grpc down"
+
+
+@pytest.mark.asyncio
+async def test_manage_job_executing_marks_job_failed_on_runtime_error(monkeypatch):
+    transition_mock = AsyncMock()
+
+    class FakeExecutor:
+        def ExecuteJob(self, request, timeout):
+            raise RuntimeError("boom")
+
+    service = JobService(job_repo=Mock(), event_repo=Mock(), job_executor=FakeExecutor())
+    job = Job(id=7, type="email", payload="hello", status=JobStatus.PENDING)
+    monkeypatch.setattr(job_service_module, "transition_job", transition_mock)
+
+    await service._manage_job_executing(job)
+
+    transition_kwargs = transition_mock.await_args.kwargs
+
+    assert transition_kwargs["job_status"] == JobStatus.FAILED
+    assert transition_kwargs["event_type"] == JobEventType.FAILED
+    assert transition_kwargs["event_payload"] == {"error_type": "RuntimeError"}
+    assert transition_kwargs["error"] == "boom"
+
+
+@pytest.mark.asyncio
+async def test_manage_job_executing_marks_job_failed_on_unknown_executor_status(monkeypatch):
+    transition_mock = AsyncMock()
+
+    class FakeExecutor:
+        def ExecuteJob(self, request, timeout):
+            async def resp_stream():
+                yield SimpleNamespace(status="mystery", progress=10, result="", error="")
+
+            return resp_stream()
+
+    service = JobService(job_repo=Mock(), event_repo=Mock(), job_executor=FakeExecutor())
+    job = Job(id=7, type="email", payload="hello", status=JobStatus.PENDING)
+    monkeypatch.setattr(job_service_module, "transition_job", transition_mock)
+
+    await service._manage_job_executing(job)
+
+    transition_kwargs = transition_mock.await_args.kwargs
+
+    assert transition_kwargs["job_status"] == JobStatus.FAILED
+    assert transition_kwargs["event_type"] == JobEventType.FAILED
+    assert transition_kwargs["event_payload"] == {"error_type": "ValueError"}
+    assert transition_kwargs["error"] == "Unknown status received"
 
 
 @pytest.mark.asyncio

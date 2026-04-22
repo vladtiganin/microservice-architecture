@@ -49,7 +49,6 @@ class WebhookSender(webhook_pb2_grpc.WebhookSenderServicer):
                 "job_id": request.payload.job_id,
                 "status": request.payload.job_status,
                 "finished_at": finished_at_iso,
-                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             }
             body = json.dumps(safe_payload, separators=(",", ":")).encode()
 

@@ -4,6 +4,8 @@ from main_service.repositories.jobs_repository import JobsRepository
 from main_service.models.webhook_models import WebhookSubscription
 from main_service.schemas.enums import WebhookDeliveryStatus
 from main_service.db.session import AsyncSessionLocal
+from contracts.webhook_pb2_grpc import WebhookSenderStub
+from contracts import webhook_pb2
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.encoders import jsonable_encoder
@@ -18,9 +20,11 @@ import json
 
 
 class WebhookService:
-    def __init__(self, job_repo: JobsRepository, webhook_repo: WebhookRepository):
+    def __init__(self, job_repo: JobsRepository, webhook_repo: WebhookRepository, webhook_sender: WebhookSenderStub):
         self.job_repo = job_repo
         self.webhook_repo = webhook_repo
+        self.webhook_sender = webhook_sender
+        
 
 
     async def create_webhook(self, webhook_req: CreateWebhookRequest, session: AsyncSession) -> WebhookSubscription:
@@ -54,17 +58,22 @@ class WebhookService:
         if not job or not webhooks:
             return
         
-        payload = {
-            "job_id": job.id,
-            "status": job.status,
-            "finished_at": job.finished_at,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+        req_payload = webhook_pb2.WebhookPayload (
+            job_id=job.id,
+            job_status=job.status,
+            finished_at=job.finished_at,
+        )
 
-        
-        async with httpx.AsyncClient() as client:
-            tasks = [self.deliver(webhook, client, payload) for webhook in webhooks if webhook.is_active]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [self.webhook_sender.SendWebhook(
+                    webhook_pb2.SendWebhookRequest(
+                        webhook_id=webhook.id,
+                        target_url=webhook.target_url,
+                        payload=req_payload,
+                        secret=webhook.secret
+                    ), 
+                    timeout=60
+                ) for webhook in webhooks if webhook.is_active]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         
         async with AsyncSessionLocal() as session:
             try:
@@ -72,17 +81,17 @@ class WebhookService:
                     if isinstance(res, Exception):
                         continue #We can process it or log it later.
 
-                    if not res["success"]:
+                    if res.status == "failed":
                         await self.webhook_repo.update_result_fields(
-                            error=res["error"], 
-                            id=res["id"], 
+                            error=res.error, 
+                            id=res.webhook_id, 
                             session=session,
                             status=WebhookDeliveryStatus.FAILED
                         )
-                    elif res["success"]:
+                    elif res.status == "sent":
                         await self.webhook_repo.update_result_fields(
                             error=None, 
-                            id=res["id"], 
+                            id=res.webhook_id, 
                             session=session,
                             status=WebhookDeliveryStatus.SENT
                         )

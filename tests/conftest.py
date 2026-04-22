@@ -1,4 +1,7 @@
+import os
+
 import main_service.models.webhook_models  # noqa: F401
+import pytest
 import pytest_asyncio
 from sqlalchemy import delete
 
@@ -7,15 +10,25 @@ from sqlalchemy.pool import NullPool
 
 from main_service.models.job_models import Base
 
-TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5433/jobs_test"
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5433/jobs_test",
+)
 
 
 @pytest_asyncio.fixture(scope="session")
 async def engine():
     engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as exc:
+        await engine.dispose()
+        pytest.skip(
+            f"Postgres test database is not available at {TEST_DATABASE_URL}: "
+            f"{type(exc).__name__}"
+        )
     yield engine
     await engine.dispose()
 

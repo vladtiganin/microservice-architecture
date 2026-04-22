@@ -143,6 +143,23 @@ async def test_jobs_repository_find_job_by_id_returns_none_when_not_exists(sessi
     assert res is None
 
 
+@pytest.mark.asyncio
+async def test_jobs_repository_job_exist_returns_boolean(session):
+    repo = JobsRepository()
+    job = Job(
+        type="email",
+        status=JobStatus.PENDING,
+        payload="hello",
+        result=None,
+        error=None,
+    )
+
+    saved_job = await repo.add(job, session)
+
+    assert await repo.job_exist(saved_job.id, session) is True
+    assert await repo.job_exist(99999, session) is False
+
+
 
 
 

@@ -2,6 +2,7 @@ from unittest.mock import ANY, AsyncMock, Mock
 
 import httpx
 import pytest
+from fastapi import HTTPException
 
 from main_service.api import dependencies
 from main_service.main import app
@@ -54,6 +55,47 @@ async def test_get_job_events_returns_items_and_passes_pagination(
             }
         ]
     }
+
+
+@pytest.mark.asyncio
+async def test_get_job_events_returns_empty_items(simple_async_client: httpx.AsyncClient):
+    service_mock = Mock()
+    service_mock.get_job_events_by_id = AsyncMock(return_value={"items": []})
+    app.dependency_overrides[dependencies.create_job_service_instance] = (
+        lambda: service_mock
+    )
+
+    try:
+        response = await simple_async_client.get("/jobs/7/events")
+    finally:
+        app.dependency_overrides.clear()
+
+    service_mock.get_job_events_by_id.assert_awaited_once_with(
+        job_id=7,
+        skip=0,
+        limit=10,
+        session=ANY,
+    )
+    assert response.status_code == 200
+    assert response.json() == {"items": []}
+
+
+@pytest.mark.asyncio
+async def test_get_job_events_returns_error_from_service(simple_async_client: httpx.AsyncClient):
+    service_mock = Mock()
+    service_mock.get_job_events_by_id = AsyncMock(
+        side_effect=HTTPException(status_code=404, detail="Job with this id not found")
+    )
+    app.dependency_overrides[dependencies.create_job_service_instance] = (
+        lambda: service_mock
+    )
+
+    try:
+        response = await simple_async_client.get("/jobs/7/events")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -124,3 +166,25 @@ async def test_get_job_events_stream_defaults_last_event_id_to_zero(
     assert called_last_event_id == 0
     assert response.status_code == 200
     assert "".join(chunks) == ": ping\n\n"
+
+
+@pytest.mark.asyncio
+async def test_get_job_events_stream_raises_value_error_for_invalid_last_event_id(
+    simple_async_client: httpx.AsyncClient,
+):
+    service_mock = Mock()
+    service_mock.generate_sse_job_event_stream = Mock()
+    app.dependency_overrides[dependencies.create_job_service_instance] = (
+        lambda: service_mock
+    )
+
+    try:
+        with pytest.raises(ValueError, match="invalid literal for int"):
+            await simple_async_client.get(
+                "/jobs/7/events/stream",
+                headers={"last-event-id": "abc"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    service_mock.generate_sse_job_event_stream.assert_not_called()

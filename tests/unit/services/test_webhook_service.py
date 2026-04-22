@@ -8,6 +8,7 @@ import httpx
 import pytest
 from fastapi import HTTPException
 
+from contracts import webhook_pb2
 from main_service.schemas.enums import JobStatus, WebhookDeliveryStatus
 from main_service.schemas.webhook_schemas import CreateWebhookRequest
 from main_service.services import webhook_service as webhook_service_module
@@ -44,13 +45,28 @@ class AsyncClientContext:
         return False
 
 
-@pytest.mark.asyncio
-async def test_create_webhook_persists_subscription_and_commits(monkeypatch):
+@pytest.fixture
+def webhook_service_fixture():
     job_repo = Mock()
-    job_repo.job_exist = AsyncMock(return_value=True)
     webhook_repo = Mock()
+    webhook_sender = Mock()
+    webhook_sender.SendWebhook = AsyncMock()
+    service = WebhookService(
+        job_repo=job_repo,
+        webhook_repo=webhook_repo,
+        webhook_sender=webhook_sender,
+    )
+    return service, job_repo, webhook_repo, webhook_sender
+
+
+@pytest.mark.asyncio
+async def test_create_webhook_persists_subscription_and_commits(
+    webhook_service_fixture,
+    monkeypatch,
+):
+    service, job_repo, webhook_repo, _ = webhook_service_fixture
+    job_repo.job_exist = AsyncMock(return_value=True)
     session = AsyncMock()
-    service = WebhookService(job_repo=job_repo, webhook_repo=webhook_repo)
 
     def save_webhook(webhook, _session):
         webhook.id = 3
@@ -76,12 +92,10 @@ async def test_create_webhook_persists_subscription_and_commits(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_create_webhook_raises_404_when_job_is_missing():
-    job_repo = Mock()
+async def test_create_webhook_raises_404_when_job_is_missing(webhook_service_fixture):
+    service, job_repo, _, _ = webhook_service_fixture
     job_repo.job_exist = AsyncMock(return_value=False)
-    webhook_repo = Mock()
     session = AsyncMock()
-    service = WebhookService(job_repo=job_repo, webhook_repo=webhook_repo)
 
     with pytest.raises(HTTPException) as exc_info:
         await service.create_webhook(
@@ -94,13 +108,13 @@ async def test_create_webhook_raises_404_when_job_is_missing():
 
 
 @pytest.mark.asyncio
-async def test_create_webhook_rolls_back_and_raises_500_on_repository_error():
-    job_repo = Mock()
+async def test_create_webhook_rolls_back_and_raises_500_on_repository_error(
+    webhook_service_fixture,
+):
+    service, job_repo, webhook_repo, _ = webhook_service_fixture
     job_repo.job_exist = AsyncMock(return_value=True)
-    webhook_repo = Mock()
     webhook_repo.add = AsyncMock(side_effect=Exception("db error"))
     session = AsyncMock()
-    service = WebhookService(job_repo=job_repo, webhook_repo=webhook_repo)
 
     with pytest.raises(HTTPException) as exc_info:
         await service.create_webhook(
@@ -114,27 +128,24 @@ async def test_create_webhook_rolls_back_and_raises_500_on_repository_error():
 
 
 @pytest.mark.asyncio
-async def test_delete_by_id_removes_webhook_when_it_exists():
-    job_repo = Mock()
-    webhook_repo = Mock()
+async def test_delete_by_id_removes_webhook_when_it_exists(webhook_service_fixture):
+    service, _, webhook_repo, _ = webhook_service_fixture
     webhook_repo.webhook_exist = AsyncMock(return_value=True)
     webhook_repo.delete = AsyncMock()
     session = AsyncMock()
-    service = WebhookService(job_repo=job_repo, webhook_repo=webhook_repo)
 
     result = await service.delete_by_id(4, session)
 
     webhook_repo.delete.assert_awaited_once_with(4, session)
+    session.commit.assert_awaited_once()
     assert result == {"id": 4, "result": "Webhook deleted"}
 
 
 @pytest.mark.asyncio
-async def test_delete_by_id_raises_404_when_webhook_is_missing():
-    job_repo = Mock()
-    webhook_repo = Mock()
+async def test_delete_by_id_raises_404_when_webhook_is_missing(webhook_service_fixture):
+    service, _, webhook_repo, _ = webhook_service_fixture
     webhook_repo.webhook_exist = AsyncMock(return_value=False)
     session = AsyncMock()
-    service = WebhookService(job_repo=job_repo, webhook_repo=webhook_repo)
 
     with pytest.raises(HTTPException) as exc_info:
         await service.delete_by_id(4, session)
@@ -144,56 +155,70 @@ async def test_delete_by_id_raises_404_when_webhook_is_missing():
 
 
 @pytest.mark.asyncio
-async def test_dispatch_job_event_processes_active_webhooks_and_updates_results(monkeypatch):
-    job_repo = Mock()
-    webhook_repo = Mock()
+async def test_dispatch_job_event_sends_active_webhooks_and_updates_delivery_statuses(
+    webhook_service_fixture,
+    monkeypatch,
+):
+    service, job_repo, webhook_repo, webhook_sender = webhook_service_fixture
     first_session = AsyncMock()
     second_session = AsyncMock()
-    client = Mock()
-    job = SimpleNamespace(
-        id=7,
-        status=JobStatus.SUCCEEDED,
-        finished_at=datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc),
+    finished_at = datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc)
+    job = SimpleNamespace(id=7, status=JobStatus.SUCCEEDED, finished_at=finished_at)
+    active_success = SimpleNamespace(
+        id=1,
+        target_url="https://example.com/a",
+        secret="secret-a",
+        is_active=True,
     )
-    active_success = SimpleNamespace(id=1, is_active=True)
-    inactive_webhook = SimpleNamespace(id=2, is_active=False)
-    active_failed = SimpleNamespace(id=3, is_active=True)
+    inactive_webhook = SimpleNamespace(
+        id=2,
+        target_url="https://example.com/b",
+        secret="secret-b",
+        is_active=False,
+    )
+    active_failed = SimpleNamespace(
+        id=3,
+        target_url="https://example.com/c",
+        secret="secret-c",
+        is_active=True,
+    )
 
     job_repo.find_job_by_id = AsyncMock(return_value=job)
     webhook_repo.find_wbhooks_by_job_id = AsyncMock(
         return_value=[active_success, inactive_webhook, active_failed]
     )
     webhook_repo.update_result_fields = AsyncMock()
-
-    service = WebhookService(job_repo=job_repo, webhook_repo=webhook_repo)
-    service.deliver = AsyncMock(
-        side_effect=[
-            {"id": 1, "success": True, "status_code": 200, "error": None},
-            {"id": 3, "success": False, "status_code": 500, "error": "server error: 500"},
-        ]
-    )
+    webhook_sender.SendWebhook.side_effect = [
+        webhook_pb2.SendWebhookResponse(webhook_id=1, status="sent", error=""),
+        webhook_pb2.SendWebhookResponse(
+            webhook_id=3,
+            status="failed",
+            error="server error: 500",
+        ),
+    ]
 
     monkeypatch.setattr(
         webhook_service_module,
         "AsyncSessionLocal",
         SessionFactory(first_session, second_session),
     )
-    monkeypatch.setattr(
-        webhook_service_module.httpx,
-        "AsyncClient",
-        lambda: AsyncClientContext(client),
-    )
 
     await service.dispatch_job_event(7)
 
-    assert service.deliver.await_count == 2
-    first_payload = service.deliver.await_args_list[0].args[2]
-    second_payload = service.deliver.await_args_list[1].args[2]
-    assert first_payload["job_id"] == 7
-    assert first_payload["status"] == JobStatus.SUCCEEDED
-    assert first_payload["finished_at"] == job.finished_at
-    assert "timestamp" in first_payload
-    assert second_payload["job_id"] == 7
+    first_request = webhook_sender.SendWebhook.await_args_list[0].args[0]
+    second_request = webhook_sender.SendWebhook.await_args_list[1].args[0]
+
+    assert webhook_sender.SendWebhook.await_count == 2
+    assert webhook_sender.SendWebhook.await_args_list[0].kwargs["timeout"] == 60
+    assert webhook_sender.SendWebhook.await_args_list[1].kwargs["timeout"] == 60
+    assert first_request.webhook_id == 1
+    assert first_request.target_url == "https://example.com/a"
+    assert first_request.secret == "secret-a"
+    assert first_request.payload.job_id == 7
+    assert first_request.payload.job_status == JobStatus.SUCCEEDED
+    assert first_request.payload.HasField("finished_at") is True
+    assert first_request.payload.finished_at.ToDatetime(timezone.utc) == finished_at
+    assert second_request.webhook_id == 3
     webhook_repo.update_result_fields.assert_any_await(
         error=None,
         id=1,
@@ -210,14 +235,67 @@ async def test_dispatch_job_event_processes_active_webhooks_and_updates_results(
 
 
 @pytest.mark.asyncio
-async def test_dispatch_job_event_returns_when_job_is_missing(monkeypatch):
-    job_repo = Mock()
-    webhook_repo = Mock()
+async def test_dispatch_job_event_ignores_sender_exceptions_and_processes_other_results(
+    webhook_service_fixture,
+    monkeypatch,
+):
+    service, job_repo, webhook_repo, webhook_sender = webhook_service_fixture
+    first_session = AsyncMock()
+    second_session = AsyncMock()
+    job = SimpleNamespace(
+        id=7,
+        status=JobStatus.SUCCEEDED,
+        finished_at=datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc),
+    )
+    first_webhook = SimpleNamespace(
+        id=1,
+        target_url="https://example.com/a",
+        secret="secret-a",
+        is_active=True,
+    )
+    second_webhook = SimpleNamespace(
+        id=2,
+        target_url="https://example.com/b",
+        secret="secret-b",
+        is_active=True,
+    )
+
+    job_repo.find_job_by_id = AsyncMock(return_value=job)
+    webhook_repo.find_wbhooks_by_job_id = AsyncMock(
+        return_value=[first_webhook, second_webhook]
+    )
+    webhook_repo.update_result_fields = AsyncMock()
+    webhook_sender.SendWebhook.side_effect = [
+        RuntimeError("sender failed"),
+        webhook_pb2.SendWebhookResponse(webhook_id=2, status="sent", error=""),
+    ]
+
+    monkeypatch.setattr(
+        webhook_service_module,
+        "AsyncSessionLocal",
+        SessionFactory(first_session, second_session),
+    )
+
+    await service.dispatch_job_event(7)
+
+    webhook_repo.update_result_fields.assert_awaited_once_with(
+        error=None,
+        id=2,
+        session=second_session,
+        status=WebhookDeliveryStatus.SENT,
+    )
+    second_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_job_event_returns_when_job_is_missing(
+    webhook_service_fixture,
+    monkeypatch,
+):
+    service, job_repo, webhook_repo, webhook_sender = webhook_service_fixture
     session = AsyncMock()
     job_repo.find_job_by_id = AsyncMock(return_value=None)
     webhook_repo.find_wbhooks_by_job_id = AsyncMock(return_value=[])
-    service = WebhookService(job_repo=job_repo, webhook_repo=webhook_repo)
-    service.deliver = AsyncMock()
 
     monkeypatch.setattr(
         webhook_service_module,
@@ -227,12 +305,12 @@ async def test_dispatch_job_event_returns_when_job_is_missing(monkeypatch):
 
     await service.dispatch_job_event(7)
 
-    service.deliver.assert_not_awaited()
+    webhook_sender.SendWebhook.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_deliver_returns_success_for_2xx_response():
-    service = WebhookService(job_repo=Mock(), webhook_repo=Mock())
+async def test_deliver_returns_success_for_2xx_response(webhook_service_fixture):
+    service, _, _, _ = webhook_service_fixture
     client = Mock()
     client.post = AsyncMock(return_value=Mock(status_code=200))
     webhook = SimpleNamespace(
@@ -258,8 +336,11 @@ async def test_deliver_returns_success_for_2xx_response():
 
 
 @pytest.mark.asyncio
-async def test_deliver_retries_server_errors_until_success(monkeypatch):
-    service = WebhookService(job_repo=Mock(), webhook_repo=Mock())
+async def test_deliver_retries_server_errors_until_success(
+    webhook_service_fixture,
+    monkeypatch,
+):
+    service, _, _, _ = webhook_service_fixture
     client = Mock()
     client.post = AsyncMock(
         side_effect=[
@@ -286,8 +367,8 @@ async def test_deliver_retries_server_errors_until_success(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_deliver_stops_on_client_error():
-    service = WebhookService(job_repo=Mock(), webhook_repo=Mock())
+async def test_deliver_stops_on_client_error(webhook_service_fixture):
+    service, _, _, _ = webhook_service_fixture
     client = Mock()
     client.post = AsyncMock(return_value=Mock(status_code=400, text="bad request"))
     webhook = SimpleNamespace(
@@ -308,8 +389,11 @@ async def test_deliver_stops_on_client_error():
 
 
 @pytest.mark.asyncio
-async def test_deliver_returns_failure_after_timeout_and_request_errors(monkeypatch):
-    service = WebhookService(job_repo=Mock(), webhook_repo=Mock())
+async def test_deliver_returns_failure_after_timeout_and_request_errors(
+    webhook_service_fixture,
+    monkeypatch,
+):
+    service, _, _, _ = webhook_service_fixture
     client = Mock()
     request = httpx.Request("POST", "https://example.com/hook")
     client.post = AsyncMock(

@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY ./proto/executor.proto ./proto/
+COPY ./contracts/executor_pb2.py ./contracts/
+COPY ./contracts/executor_pb2_grpc.py ./contracts/
+COPY ./contracts/executor_pb2.pyi ./contracts/
+COPY ./executor_service ./executor_service
+
+CMD ["python", "-m", "executor_service.executor"]

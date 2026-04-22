@@ -9,15 +9,20 @@ from main_service.services.job_service import JobService
 from main_service.services.webhook_service import WebhookService
 from main_service.config import settings
 from contracts.executor_pb2_grpc import ExecutorStub 
+from contracts.webhook_pb2_grpc import WebhookSenderStub
 
 
 event_repo = EventRepository()
 job_repo = JobsRepository()
 webhook_repo = WebhookRepository()
-webhook_service = WebhookService(job_repo, webhook_repo)
 
-channel = grpc.aio.insecure_channel(f"{settings.executor_service_address}")
-stab = ExecutorStub(channel)
+executor_channel = grpc.aio.insecure_channel(f"{settings.executor_service_address}")
+executor_stab = ExecutorStub(executor_channel)
+
+webhook_channel = grpc.aio.insecure_channel(f"{settings.webhook_service_address}")
+webhook_stab = WebhookSenderStub(webhook_channel)
+
+webhook_service = WebhookService(job_repo, webhook_repo, webhook_stab)
 
 
 async def get_db_session():
@@ -44,7 +49,7 @@ def create_webhook_repository_instance() -> WebhookRepository:
 
 
 def create_job_executor_instance() -> ExecutorStub:
-    return stab
+    return executor_stab
 
 
 def create_job_repository_instance() -> JobsRepository:

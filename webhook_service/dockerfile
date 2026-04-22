@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY ./proto/webhook.proto ./proto/
+COPY ./contracts/webhook_pb2.pyi ./contracts/
+COPY ./contracts/webhook_pb2.py ./contracts/
+COPY ./contracts/webhook_pb2_grpc.py ./contracts/
+COPY ./webhook_service ./webhook_service
+
+CMD ["python", "-m", "webhook_service.webhook"]
