@@ -5,20 +5,25 @@ import secrets
 from hashlib import sha256
 
 import httpx
-from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from contracts import webhook_pb2
 from contracts.webhook_pb2_grpc import WebhookSenderStub
-from main_service.core.logging import get_logger
+from main_service.core.exception.exception import (
+    JobNotFoundError,
+    WebhookCreateError,
+    WebhookDeleteError,
+    WebhookNotFoundError,
+)
+from main_service.core.logging.logging import get_logger
 from main_service.db.session import AsyncSessionLocal
 from main_service.models.webhook_models import WebhookSubscription
 from main_service.repositories.jobs_repository import JobsRepository
 from main_service.repositories.webhook_repository import WebhookRepository
 from main_service.schemas.enums import WebhookDeliveryStatus
 from main_service.schemas.webhook_schemas import CreateWebhookRequest
-from main_service.core.context import context_correlation_id
+from main_service.core.context.context import context_correlation_id
 
 
 logger = get_logger(__name__)
@@ -41,7 +46,7 @@ class WebhookService:
                     "target_url": str(webhook_req.target_url),
                 },
             )
-            raise HTTPException(404, "Job with this id not found")
+            raise JobNotFoundError(webhook_req.job_id)
 
         try:
             webhook = WebhookSubscription(
@@ -61,7 +66,7 @@ class WebhookService:
                     "target_url": str(webhook_req.target_url),
                 },
             )
-            raise HTTPException(500, "Server error, try later")
+            raise WebhookCreateError(webhook_req.job_id)
         else:
             await session.commit()
             await session.refresh(webhook)
@@ -379,7 +384,7 @@ class WebhookService:
                     "webhook_id": webhook_id,
                 },
             )
-            raise HTTPException(status_code=404, detail="Webhook does not exists")
+            raise WebhookNotFoundError(webhook_id)
 
         try:
             await self.webhook_repo.delete(webhook_id, session)
@@ -404,4 +409,4 @@ class WebhookService:
                     "webhook_id": webhook_id,
                 },
             )
-            raise HTTPException(status_code=500, detail="Server error, try later")
+            raise WebhookDeleteError(webhook_id)

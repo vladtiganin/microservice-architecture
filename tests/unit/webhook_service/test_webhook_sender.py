@@ -15,7 +15,7 @@ import pytest
 from contracts import webhook_pb2
 from webhook_service import webhook as webhook_module
 from webhook_service.webhook import WebhookSender
-from webhook_service.core.logging import JsonFormatter, ServiceFilter
+from webhook_service.core.logging.logging import JsonFormatter, ServiceFilter
 
 
 class AbortCalled(Exception):

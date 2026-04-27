@@ -8,8 +8,8 @@ import grpc
 import httpx
 
 from contracts import webhook_pb2, webhook_pb2_grpc
-from webhook_service.core.logging import *
-from webhook_service.core.context import context_correlation_id
+from webhook_service.core.logging.logging import *
+from webhook_service.core.context.context import context_correlation_id
 
 
 configure_logging("webhook_service")

@@ -17,7 +17,7 @@ from main_service.schemas.enums import JobStatus, WebhookDeliveryStatus
 from main_service.schemas.webhook_schemas import CreateWebhookRequest
 from main_service.services import webhook_service as webhook_service_module
 from main_service.services.webhook_service import WebhookService
-from main_service.core.logging import JsonFormatter, ServiceFilter
+from main_service.core.logging.logging import JsonFormatter, ServiceFilter
 
 
 class SessionContext:

@@ -6,13 +6,17 @@ import uuid
 
 from main_service.api import jobs_api
 from main_service.api import webhook_api
-from main_service.core.logging import *
-from main_service.core.context import context_correlation_id
+from main_service.core.logging.logging import *
+from main_service.core.context.context import context_correlation_id
+from main_service.core.exception.exception_handler import app_exception_handler
+from main_service.core.exception.exception import AppException
 
 app = FastAPI(
     title="Job Processing Platform",
     version="1.0.0"
 )
+
+app.add_exception_handler(AppException, app_exception_handler)
 
 configure_logging("main_service", disable_uvicorn_access=True)
 logger = get_logger(__name__)

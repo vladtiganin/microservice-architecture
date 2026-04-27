@@ -4,8 +4,8 @@ import grpc
 import grpc.aio
 
 from contracts import executor_pb2, executor_pb2_grpc
-from executor_service.core.logging import *
-from executor_service.core.context import context_correlation_id
+from executor_service.core.logging.logging import *
+from executor_service.core.context.context import context_correlation_id
 
 
 

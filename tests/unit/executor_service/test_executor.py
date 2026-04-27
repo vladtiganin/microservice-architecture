@@ -11,7 +11,7 @@ import pytest
 from contracts import executor_pb2
 from executor_service import executor as executor_module
 from executor_service.executor import Executor
-from executor_service.core.logging import JsonFormatter, ServiceFilter
+from executor_service.core.logging.logging import JsonFormatter, ServiceFilter
 
 
 class AbortCalled(Exception):

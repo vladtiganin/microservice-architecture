@@ -14,7 +14,7 @@ from main_service.schemas.enums import JobEventType, JobStatus
 from main_service.schemas.jobs_schemas import CreateJobRequest
 from main_service.services import job_service as job_service_module
 from main_service.services.job_service import JobService
-from main_service.core.logging import JsonFormatter, ServiceFilter
+from main_service.core.logging.logging import JsonFormatter, ServiceFilter
 
 
 class SessionContext:

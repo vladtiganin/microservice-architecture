@@ -7,7 +7,7 @@ from pathlib import Path
 from traceback import format_exception
 from typing import Any
 
-from executor_service.core.context import context_correlation_id
+from executor_service.core.context.context import context_correlation_id
 
 
 STANDARD_LOG_RECORD_FIELDS = {

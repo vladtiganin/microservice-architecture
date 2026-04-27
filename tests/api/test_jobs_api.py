@@ -11,7 +11,7 @@ import pytest
 from fastapi import HTTPException
 
 from main_service.api import dependencies
-from main_service.core.logging import JsonFormatter, ServiceFilter
+from main_service.core.logging.logging import JsonFormatter, ServiceFilter
 from main_service.main import app
 from main_service.schemas.enums import JobStatus
 

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from main_service.core.logging import get_logger
+from main_service.core.logging.logging import get_logger
 from main_service.db.session import AsyncSessionLocal
 from main_service.models.job_models import Job, JobEvent
 from main_service.repositories.event_repository import EventRepository

@@ -4,12 +4,13 @@ from asyncio import create_task
 from datetime import datetime
 
 import grpc
-from fastapi import HTTPException, Request
+from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from contracts import executor_pb2
 from contracts.executor_pb2_grpc import ExecutorStub
-from main_service.core.logging import get_logger
+from main_service.core.exception.exception import JobCreateError, JobNotFoundError
+from main_service.core.logging.logging import get_logger
 from main_service.db.session import AsyncSessionLocal
 from main_service.models.job_models import Job, JobEvent
 from main_service.repositories.event_repository import EventRepository
@@ -17,7 +18,7 @@ from main_service.repositories.jobs_repository import JobsRepository
 from main_service.schemas.enums import JobEventType, JobStatus
 from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse
 from main_service.services.transition import transition_job
-from main_service.core.context import context_correlation_id
+from main_service.core.context.context import context_correlation_id
 
 
 logger = get_logger(__name__)
@@ -77,7 +78,7 @@ class JobService:
                     "job_type": job.type,
                 },
             )
-            raise HTTPException(status_code=500, detail="Error during creating a job")
+            raise JobCreateError(job.type)
         else:
             await session.commit()
             await session.refresh(new_job)
@@ -226,7 +227,7 @@ class JobService:
                     "job_id": job_id,
                 },
             )
-            raise HTTPException(status_code=404, detail="Job with this id not found")
+            raise JobNotFoundError(job_id)
 
         return job
 
@@ -264,7 +265,7 @@ class JobService:
                         "job_id": job_id,
                     },
                 )
-                raise HTTPException(404, "Job not found")
+                raise JobNotFoundError(job_id)
 
         sse_event_id = last_sse_event_id if last_sse_event_id is not None else 0
         close_reason = "completed"

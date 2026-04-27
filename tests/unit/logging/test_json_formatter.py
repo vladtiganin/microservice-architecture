@@ -5,13 +5,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from executor_service.core.logging import JsonFormatter as ExecutorJsonFormatter
-from executor_service.core.logging import ServiceFilter as ExecutorServiceFilter
-from main_service.core.logging import JsonFormatter as MainJsonFormatter
-from main_service.core.logging import ServiceFilter as MainServiceFilter
+from executor_service.core.logging.logging import JsonFormatter as ExecutorJsonFormatter
+from executor_service.core.logging.logging import ServiceFilter as ExecutorServiceFilter
+from main_service.core.logging.logging import JsonFormatter as MainJsonFormatter
+from main_service.core.logging.logging import ServiceFilter as MainServiceFilter
 from main_service.schemas.enums import JobStatus
-from webhook_service.core.logging import JsonFormatter as WebhookJsonFormatter
-from webhook_service.core.logging import ServiceFilter as WebhookServiceFilter
+from webhook_service.core.logging.logging import JsonFormatter as WebhookJsonFormatter
+from webhook_service.core.logging.logging import ServiceFilter as WebhookServiceFilter
 
 
 FORMATTERS = [
