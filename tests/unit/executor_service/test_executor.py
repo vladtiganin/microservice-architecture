@@ -1,4 +1,8 @@
 import asyncio
+import json
+import logging
+from contextlib import contextmanager
+from io import StringIO
 from unittest.mock import AsyncMock, Mock
 
 import grpc
@@ -7,6 +11,7 @@ import pytest
 from contracts import executor_pb2
 from executor_service import executor as executor_module
 from executor_service.executor import Executor
+from executor_service.core.logging import JsonFormatter, ServiceFilter
 
 
 class AbortCalled(Exception):
@@ -17,6 +22,25 @@ class FakeContext:
     def __init__(self, cancelled=False):
         self.abort = AsyncMock(side_effect=AbortCalled("aborted"))
         self.cancelled = Mock(return_value=cancelled)
+
+
+def parse_json_logs(stderr: str) -> list[dict]:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
+
+
+@contextmanager
+def capture_structured_logs():
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    handler.addFilter(ServiceFilter("executor_service"))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+    try:
+        yield lambda: parse_json_logs(stream.getvalue())
+    finally:
+        root_logger.removeHandler(handler)
+        handler.close()
 
 
 @pytest.mark.asyncio
@@ -58,7 +82,9 @@ async def test_execute_job_streams_progress_and_completion(monkeypatch):
 
     context = FakeContext()
     request = executor_pb2.ExecuteJobRequest(job_id=7, type="email", payload="hello")
-    responses = [response async for response in Executor().ExecuteJob(request, context)]
+    with capture_structured_logs() as get_logs:
+        responses = [response async for response in Executor().ExecuteJob(request, context)]
+    logs = get_logs()
 
     assert [response.progress for response in responses] == [10, 30, 50, 90, 100]
     assert [response.status for response in responses] == [
@@ -69,6 +95,13 @@ async def test_execute_job_streams_progress_and_completion(monkeypatch):
         "finished",
     ]
     assert responses[-1].result == "job completed successfully"
+    assert [record["event"] for record in logs] == [
+        "job_execution_request_received",
+        "job_execution_started",
+        "job_execution_completed",
+    ]
+    assert all(record["service"] == "executor_service" for record in logs)
+    assert all("payload" not in record for record in logs)
 
 
 @pytest.mark.asyncio
@@ -91,11 +124,20 @@ async def test_execute_job_yields_failed_response_on_unexpected_error(monkeypatc
 
     context = FakeContext(cancelled=False)
     request = executor_pb2.ExecuteJobRequest(job_id=7, type="email", payload="hello")
-    responses = [response async for response in Executor().ExecuteJob(request, context)]
+    with capture_structured_logs() as get_logs:
+        responses = [response async for response in Executor().ExecuteJob(request, context)]
+    logs = get_logs()
 
     assert len(responses) == 1
     assert responses[0].status == "failed"
     assert responses[0].error == "Something goes wrong during execution"
+    assert [record["event"] for record in logs] == [
+        "job_execution_request_received",
+        "job_execution_started",
+        "job_execution_failed",
+    ]
+    assert logs[-1]["error_type"] == "RuntimeError"
+    assert logs[-1]["error_message"] == "boom"
 
 
 @pytest.mark.asyncio

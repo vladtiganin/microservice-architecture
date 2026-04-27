@@ -15,6 +15,7 @@ class Job(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[JobStatus] = mapped_column(Enum(JobStatus, name="job_status"), nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(255), nullable=False)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(String(255), nullable=True)

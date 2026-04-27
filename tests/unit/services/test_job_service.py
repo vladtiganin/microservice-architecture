@@ -1,4 +1,8 @@
 from datetime import datetime, timezone
+import json
+import logging
+from contextlib import contextmanager
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -10,6 +14,7 @@ from main_service.schemas.enums import JobEventType, JobStatus
 from main_service.schemas.jobs_schemas import CreateJobRequest
 from main_service.services import job_service as job_service_module
 from main_service.services.job_service import JobService
+from main_service.core.logging import JsonFormatter, ServiceFilter
 
 
 class SessionContext:
@@ -41,6 +46,25 @@ class FakeRpcError(Exception):
 
     def details(self):
         return self._details
+
+
+def parse_json_logs(stderr: str) -> list[dict]:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
+
+
+@contextmanager
+def capture_structured_logs():
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    handler.addFilter(ServiceFilter("main_service"))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+    try:
+        yield lambda: parse_json_logs(stream.getvalue())
+    finally:
+        root_logger.removeHandler(handler)
+        handler.close()
 
 
 @pytest.fixture
@@ -93,7 +117,9 @@ async def test_create_job_creates_pending_job_created_event_and_background_work(
     monkeypatch.setattr(job_service_module, "transition_job", transition_mock)
     monkeypatch.setattr(job_service_module, "create_task", fake_create_task)
 
-    result = await service.create_job(req, session)
+    with capture_structured_logs() as get_logs:
+        result = await service.create_job(req, session)
+    logs = get_logs()
 
     created_job = job_repo.add.await_args.args[0]
     created_event = event_repo.add.await_args.args[0]
@@ -120,6 +146,12 @@ async def test_create_job_creates_pending_job_created_event_and_background_work(
     assert scheduled_name == "_manage_job_executing"
     assert scheduled_job is stored_job
     assert len(scheduled) == 1
+    assert [record["event"] for record in logs] == [
+        "job_creation_requested",
+        "job_created",
+    ]
+    assert all(record["service"] == "main_service" for record in logs)
+    assert all("payload" not in record for record in logs)
 
 
 @pytest.mark.asyncio
@@ -174,11 +206,15 @@ async def test_get_job_by_id_raises_404_when_not_found(job_service_fixture):
     job_repo.find_job_by_id = AsyncMock(return_value=None)
     session = AsyncMock()
 
-    with pytest.raises(HTTPException) as exc_info:
-        await service.get_job_by_id(1, session)
+    with capture_structured_logs() as get_logs:
+        with pytest.raises(HTTPException) as exc_info:
+            await service.get_job_by_id(1, session)
+    logs = get_logs()
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Job with this id not found"
+    assert [record["event"] for record in logs] == ["job_not_found"]
+    assert logs[0]["job_id"] == 1
 
 
 @pytest.mark.asyncio
@@ -383,16 +419,18 @@ async def test_generate_sse_job_event_stream_yields_terminal_event_and_stops(
         SessionFactory(first_session, second_session),
     )
 
-    stream = service.generate_sse_job_event_stream(
-        job_id=7,
-        request=request,
-        last_sse_event_id=2,
-    )
+    with capture_structured_logs() as get_logs:
+        stream = service.generate_sse_job_event_stream(
+            job_id=7,
+            request=request,
+            last_sse_event_id=2,
+        )
 
-    payload = await anext(stream)
+        payload = await anext(stream)
 
-    with pytest.raises(StopAsyncIteration):
-        await anext(stream)
+        with pytest.raises(StopAsyncIteration):
+            await anext(stream)
+    logs = get_logs()
 
     job_repo.job_exist.assert_awaited_once_with(7, first_session)
     event_repo.get.assert_awaited_once_with(job_id=7, session=second_session, skip=2, limit=1)
@@ -400,3 +438,8 @@ async def test_generate_sse_job_event_stream_yields_terminal_event_and_stops(
     assert payload.startswith("id: 3\n")
     assert "event: JobEventType.FINISHED\n" in payload
     assert '"event_type": "finished"' in payload
+    assert [record["event"] for record in logs] == [
+        "job_events_stream_opened",
+        "job_events_stream_terminal_event_sent",
+        "job_events_stream_closed",
+    ]

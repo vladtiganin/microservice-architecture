@@ -1,8 +1,11 @@
 import asyncio
 import hmac
 import json
+import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
+from io import StringIO
 from unittest.mock import AsyncMock, Mock
 
 import grpc
@@ -12,6 +15,7 @@ import pytest
 from contracts import webhook_pb2
 from webhook_service import webhook as webhook_module
 from webhook_service.webhook import WebhookSender
+from webhook_service.core.logging import JsonFormatter, ServiceFilter
 
 
 class AbortCalled(Exception):
@@ -32,6 +36,25 @@ class AsyncClientContext:
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
+
+
+def parse_json_logs(stderr: str) -> list[dict]:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
+
+
+@contextmanager
+def capture_structured_logs():
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    handler.addFilter(ServiceFilter("webhook_service"))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+    try:
+        yield lambda: parse_json_logs(stream.getvalue())
+    finally:
+        root_logger.removeHandler(handler)
+        handler.close()
 
 
 def build_request(target_url="https://example.com/hook", finished_at=None):
@@ -76,7 +99,9 @@ async def test_send_webhook_signs_and_sends_serialized_payload(monkeypatch):
         lambda: AsyncClientContext(client),
     )
 
-    response = await sender.SendWebhook(request, FakeContext())
+    with capture_structured_logs() as get_logs:
+        response = await sender.SendWebhook(request, FakeContext())
+    logs = get_logs()
 
     post_kwargs = client.post.await_args.kwargs
     expected_body = json.dumps(
@@ -99,6 +124,14 @@ async def test_send_webhook_signs_and_sends_serialized_payload(monkeypatch):
     assert post_kwargs["url"] == "https://example.com/hook"
     assert post_kwargs["content"] == expected_body
     assert post_kwargs["headers"]["X-Webhook-Signature"] == expected_signature
+    assert [record["event"] for record in logs] == [
+        "webhook_delivery_requested",
+        "webhook_delivery_succeeded",
+    ]
+    assert all(record["service"] == "webhook_service" for record in logs)
+    assert all("secret" not in record for record in logs)
+    assert all("signature" not in record for record in logs)
+    assert all("payload" not in record for record in logs)
 
 
 @pytest.mark.asyncio
@@ -124,7 +157,7 @@ async def test_send_webhook_retries_server_errors_until_success(monkeypatch):
     response = await sender.SendWebhook(build_request(), FakeContext())
 
     assert response.status == "sent"
-    assert response.error == "server error: 502"
+    assert response.error == ""
     assert client.post.await_count == 3
     assert [call.args[0] for call in sleep_mock.await_args_list] == [1, 2]
 
@@ -144,7 +177,7 @@ async def test_send_webhook_stops_on_client_error(monkeypatch):
     response = await sender.SendWebhook(build_request(), FakeContext())
 
     assert response.status == "failed"
-    assert response.error == "client error 400: bad request"
+    assert response.error == "client error 400"
     assert client.post.await_count == 1
 
 
@@ -170,12 +203,22 @@ async def test_send_webhook_returns_failed_after_timeout_and_request_errors(monk
     )
     monkeypatch.setattr(webhook_module.asyncio, "sleep", sleep_mock)
 
-    response = await sender.SendWebhook(build_request(), FakeContext())
+    with capture_structured_logs() as get_logs:
+        response = await sender.SendWebhook(build_request(), FakeContext())
+    logs = get_logs()
 
     assert response.status == "failed"
     assert response.error == "Request error: still down"
     assert client.post.await_count == 4
     assert [call.args[0] for call in sleep_mock.await_args_list] == [1, 2, 4]
+    assert [record["event"] for record in logs] == [
+        "webhook_delivery_requested",
+        "webhook_delivery_retryable_failure",
+        "webhook_delivery_retryable_failure",
+        "webhook_delivery_retryable_failure",
+        "webhook_delivery_retryable_failure",
+        "webhook_delivery_finished_with_failure",
+    ]
 
 
 @pytest.mark.asyncio

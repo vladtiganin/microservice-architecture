@@ -1,4 +1,8 @@
 from datetime import datetime, timezone
+import json
+import logging
+from contextlib import contextmanager
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, Mock
 
@@ -7,16 +11,45 @@ import pytest
 from fastapi import HTTPException
 
 from main_service.api import dependencies
+from main_service.core.logging import JsonFormatter, ServiceFilter
 from main_service.main import app
 from main_service.schemas.enums import JobStatus
 
 
+def parse_json_logs(stderr: str) -> list[dict]:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
+
+
+@contextmanager
+def capture_structured_logs():
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    handler.addFilter(ServiceFilter("main_service"))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+    try:
+        yield lambda: parse_json_logs(stream.getvalue())
+    finally:
+        root_logger.removeHandler(handler)
+        handler.close()
+
+
 @pytest.mark.asyncio
 async def test_root_returns_status_ok(simple_async_client):
-    response = await simple_async_client.get("/")
+    with capture_structured_logs() as get_logs:
+        response = await simple_async_client.get("/")
+    logs = get_logs()
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+    request_logs = [record for record in logs if record["event"] == "http_request_completed"]
+    assert len(request_logs) == 1
+    assert request_logs[0]["service"] == "main_service"
+    assert request_logs[0]["method"] == "GET"
+    assert request_logs[0]["path"] == "/"
+    assert request_logs[0]["status_code"] == 200
+    assert all(record["logger"] != "uvicorn.access" for record in logs)
 
 
 @pytest.mark.asyncio

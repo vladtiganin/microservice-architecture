@@ -1,6 +1,10 @@
 import hmac
+import json
+import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -13,6 +17,7 @@ from main_service.schemas.enums import JobStatus, WebhookDeliveryStatus
 from main_service.schemas.webhook_schemas import CreateWebhookRequest
 from main_service.services import webhook_service as webhook_service_module
 from main_service.services.webhook_service import WebhookService
+from main_service.core.logging import JsonFormatter, ServiceFilter
 
 
 class SessionContext:
@@ -45,6 +50,25 @@ class AsyncClientContext:
         return False
 
 
+def parse_json_logs(stderr: str) -> list[dict]:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
+
+
+@contextmanager
+def capture_structured_logs():
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    handler.addFilter(ServiceFilter("main_service"))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+    try:
+        yield lambda: parse_json_logs(stream.getvalue())
+    finally:
+        root_logger.removeHandler(handler)
+        handler.close()
+
+
 @pytest.fixture
 def webhook_service_fixture():
     job_repo = Mock()
@@ -75,10 +99,12 @@ async def test_create_webhook_persists_subscription_and_commits(
     webhook_repo.add = AsyncMock(side_effect=save_webhook)
     monkeypatch.setattr(webhook_service_module.secrets, "token_hex", lambda _: "secret-token")
 
-    result = await service.create_webhook(
-        CreateWebhookRequest(job_id=7, target_url="https://example.com/hook"),
-        session,
-    )
+    with capture_structured_logs() as get_logs:
+        result = await service.create_webhook(
+            CreateWebhookRequest(job_id=7, target_url="https://example.com/hook"),
+            session,
+        )
+    logs = get_logs()
 
     created_webhook = webhook_repo.add.await_args.args[0]
 
@@ -89,6 +115,9 @@ async def test_create_webhook_persists_subscription_and_commits(
     assert result.id == 3
     session.commit.assert_awaited_once()
     session.refresh.assert_awaited_once_with(result)
+    assert [record["event"] for record in logs] == ["webhook_created"]
+    assert logs[0]["service"] == "main_service"
+    assert "secret" not in logs[0]
 
 
 @pytest.mark.asyncio
@@ -203,7 +232,9 @@ async def test_dispatch_job_event_sends_active_webhooks_and_updates_delivery_sta
         SessionFactory(first_session, second_session),
     )
 
-    await service.dispatch_job_event(7)
+    with capture_structured_logs() as get_logs:
+        await service.dispatch_job_event(7)
+    logs = get_logs()
 
     first_request = webhook_sender.SendWebhook.await_args_list[0].args[0]
     second_request = webhook_sender.SendWebhook.await_args_list[1].args[0]
@@ -232,6 +263,13 @@ async def test_dispatch_job_event_sends_active_webhooks_and_updates_delivery_sta
         status=WebhookDeliveryStatus.FAILED,
     )
     second_session.commit.assert_awaited_once()
+    assert [record["event"] for record in logs] == [
+        "webhook_dispatch_started",
+        "webhook_dispatch_result",
+        "webhook_dispatch_result",
+        "webhook_dispatch_completed",
+    ]
+    assert all("secret" not in record for record in logs)
 
 
 @pytest.mark.asyncio
@@ -383,7 +421,7 @@ async def test_deliver_stops_on_client_error(webhook_service_fixture):
         "id": 1,
         "success": False,
         "status_code": 400,
-        "error": "client error 400: bad request",
+        "error": "client error 400",
     }
     assert client.post.await_count == 1
 
