@@ -3,6 +3,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from main_service.api import dependencies
+from main_service.core.security.dependencies import get_curr_user
+from main_service.models.user_models import User
 from main_service.schemas.jobs_schemas import CreateJobRequest, JobListResponse, JobResponse, CreateJobResponse, JobStatusResponse, JobEventsListResponse
 from main_service.services import job_service
 
@@ -29,10 +31,11 @@ async def get_jobs(
 @router.post("", response_model=CreateJobResponse)
 async def post_job(
     job: CreateJobRequest,
+    current_user: User = Depends(get_curr_user),
     service: job_service.JobService = Depends(dependencies.create_job_service_instance),
     session: AsyncSession = Depends(dependencies.get_db_session)
     ):
-    res =  await service.create_job(job=job, session=session)
+    res =  await service.create_job(job=job, user_id=current_user.id, session=session)
 
     resp = {
         "id": res.id,
@@ -98,4 +101,4 @@ async def get_job_events_stream(
             "Cache-Control" : "no-cache",
             "Connection": "keep-alive"
         }
-    ) 
+    )

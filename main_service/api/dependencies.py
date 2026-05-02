@@ -7,6 +7,8 @@ from main_service.repositories.jobs_repository import JobsRepository
 from main_service.repositories.webhook_repository import WebhookRepository
 from main_service.services.job_service import JobService
 from main_service.services.webhook_service import WebhookService
+from main_service.services.auth_service import AuthService
+from main_service.repositories.users_repository import UsersRepository
 from main_service.config import settings
 from contracts.executor_pb2_grpc import ExecutorStub 
 from contracts.webhook_pb2_grpc import WebhookSenderStub
@@ -24,10 +26,22 @@ webhook_stab = WebhookSenderStub(webhook_channel)
 
 webhook_service = WebhookService(job_repo, webhook_repo, webhook_stab)
 
+users_repo = UsersRepository()
+auth_service = AuthService(users_repo)
+
+
+def create_users_repository_instance():
+    return users_repo
+
+
+def create_auth_service_instance():
+    return auth_service
+
 
 async def get_db_session():
     async with AsyncSessionLocal() as session:
         yield session
+
 
 def pagination_parameters(skip: int = 0, limit: int = 10) -> dict:
     return {

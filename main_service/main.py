@@ -6,6 +6,7 @@ import uuid
 
 from main_service.api import jobs_api
 from main_service.api import webhook_api
+from main_service.api import auth_api
 from main_service.core.logging.logging import *
 from main_service.core.context.context import context_correlation_id
 from main_service.core.exception.exception_handler import app_exception_handler
@@ -78,6 +79,7 @@ app.add_middleware(
 
 app.include_router(jobs_api.router)
 app.include_router(webhook_api.router)
+app.include_router(auth_api.router)
 
 
 @app.get("/")

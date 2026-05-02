@@ -11,6 +11,7 @@ import pytest
 from fastapi import HTTPException
 
 from main_service.api import dependencies
+from main_service.core.security.dependencies import get_curr_user
 from main_service.core.logging.logging import JsonFormatter, ServiceFilter
 from main_service.main import app
 from main_service.schemas.enums import JobStatus
@@ -158,6 +159,7 @@ async def test_post_jobs_returns_200_and_create_job_response(simple_async_client
     service_mock = Mock()
     service_mock.create_job = AsyncMock(return_value=SimpleNamespace(id=9))
     app.dependency_overrides[dependencies.create_job_service_instance] = lambda: service_mock
+    app.dependency_overrides[get_curr_user] = lambda: SimpleNamespace(id=42)
 
     try:
         response = await simple_async_client.post("/jobs", json={"type": "email", "payload": "hello"})
@@ -173,21 +175,39 @@ async def test_post_jobs_returns_200_and_create_job_response(simple_async_client
     call_kwargs = service_mock.create_job.await_args.kwargs
     assert call_kwargs["job"].type == "email"
     assert call_kwargs["job"].payload == "hello"
+    assert call_kwargs["user_id"] == 42
     assert call_kwargs["session"] is not None
 
 
 @pytest.mark.asyncio
 async def test_post_jobs_returns_422_when_type_is_missing(simple_async_client: httpx.AsyncClient):
-    response = await simple_async_client.post("/jobs", json={"payload": "hello"})
+    app.dependency_overrides[get_curr_user] = lambda: SimpleNamespace(id=42)
+
+    try:
+        response = await simple_async_client.post("/jobs", json={"payload": "hello"})
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_post_jobs_returns_422_when_payload_is_missing(simple_async_client: httpx.AsyncClient):
-    response = await simple_async_client.post("/jobs", json={"type": "email"})
+    app.dependency_overrides[get_curr_user] = lambda: SimpleNamespace(id=42)
+
+    try:
+        response = await simple_async_client.post("/jobs", json={"type": "email"})
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_post_jobs_returns_401_without_authorization(simple_async_client: httpx.AsyncClient):
+    response = await simple_async_client.post("/jobs", json={"type": "email", "payload": "hello"})
+
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -197,6 +217,7 @@ async def test_post_jobs_returns_500_when_service_raises_http_exception(simple_a
         side_effect=HTTPException(status_code=500, detail="Error during creating a job")
     )
     app.dependency_overrides[dependencies.create_job_service_instance] = lambda: service_mock
+    app.dependency_overrides[get_curr_user] = lambda: SimpleNamespace(id=42)
 
     try:
         response = await simple_async_client.post("/jobs", json={"type": "email", "payload": "hello"})

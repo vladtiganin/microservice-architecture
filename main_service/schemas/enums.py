@@ -22,3 +22,13 @@ class JobEventType(str, enum.Enum):
 class WebhookDeliveryStatus(str, enum.Enum):
     SENT = "sent"
     FAILED = "failed"
+
+
+class UserRagistraiteStatus(str, enum.Enum):
+    SUCCESS = "success"
+    FAILED = "failed"
+
+    
+class UserLoginStatus(str, enum.Enum):
+    SUCCESS = "success"
+    FAILED = "failed"

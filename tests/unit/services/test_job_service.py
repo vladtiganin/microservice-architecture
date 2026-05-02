@@ -97,7 +97,7 @@ async def test_create_job_creates_pending_job_created_event_and_background_work(
 ):
     service, job_repo, event_repo, job_executor = job_service_fixture
     req = CreateJobRequest(type="email", payload="hello")
-    stored_job = Job(id=1, type="email", payload="hello", status=JobStatus.PENDING)
+    stored_job = Job(id=1, user_id=42, type="email", payload="hello", status=JobStatus.PENDING)
     job_repo.add = AsyncMock(return_value=stored_job)
     event_repo.add = AsyncMock()
     session = AsyncMock()
@@ -118,7 +118,7 @@ async def test_create_job_creates_pending_job_created_event_and_background_work(
     monkeypatch.setattr(job_service_module, "create_task", fake_create_task)
 
     with capture_structured_logs() as get_logs:
-        result = await service.create_job(req, session)
+        result = await service.create_job(req, user_id=42, session=session)
     logs = get_logs()
 
     created_job = job_repo.add.await_args.args[0]
@@ -127,6 +127,7 @@ async def test_create_job_creates_pending_job_created_event_and_background_work(
 
     assert result is stored_job
     assert created_job.type == "email"
+    assert created_job.user_id == 42
     assert created_job.payload == "hello"
     assert created_job.status == JobStatus.PENDING
     assert created_event.job_id == 1
@@ -162,7 +163,7 @@ async def test_create_job_rolls_back_and_raises_500_when_job_repo_add_fails(job_
     session = AsyncMock()
 
     with pytest.raises(HTTPException) as exc_info:
-        await service.create_job(CreateJobRequest(type="email", payload="hello"), session)
+        await service.create_job(CreateJobRequest(type="email", payload="hello"), user_id=42, session=session)
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "Error during creating a job"
@@ -174,12 +175,12 @@ async def test_create_job_rolls_back_and_raises_500_when_job_repo_add_fails(job_
 @pytest.mark.asyncio
 async def test_create_job_rolls_back_and_raises_500_when_event_repo_add_fails(job_service_fixture):
     service, job_repo, event_repo, _ = job_service_fixture
-    job_repo.add = AsyncMock(return_value=Job(id=1, type="email", payload="hello", status=JobStatus.PENDING))
+    job_repo.add = AsyncMock(return_value=Job(id=1, user_id=42, type="email", payload="hello", status=JobStatus.PENDING))
     event_repo.add = AsyncMock(side_effect=Exception("db error"))
     session = AsyncMock()
 
     with pytest.raises(HTTPException) as exc_info:
-        await service.create_job(CreateJobRequest(type="email", payload="hello"), session)
+        await service.create_job(CreateJobRequest(type="email", payload="hello"), user_id=42, session=session)
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "Error during creating a job"

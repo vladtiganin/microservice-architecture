@@ -1,5 +1,6 @@
 import os
 
+import main_service.models.user_models  # noqa: F401
 import main_service.models.webhook_models  # noqa: F401
 import pytest
 import pytest_asyncio
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from main_service.models.job_models import Base
+from main_service.models.user_models import User
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -43,3 +45,11 @@ async def session(engine):
     async with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(delete(table))
+
+
+@pytest_asyncio.fixture
+async def user(session):
+    user = User(email="test@example.com", hashed_password="hashed")
+    session.add(user)
+    await session.flush()
+    return user

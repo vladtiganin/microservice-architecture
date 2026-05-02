@@ -13,6 +13,7 @@ class Job(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[JobStatus] = mapped_column(Enum(JobStatus, name="job_status"), nullable=False)
     correlation_id: Mapped[str] = mapped_column(String(255), nullable=False)

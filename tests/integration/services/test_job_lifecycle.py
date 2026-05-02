@@ -45,7 +45,7 @@ def _disable_background_task(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_create_job_moves_job_to_queued_and_writes_created_and_queued_events(session, engine, monkeypatch):
+async def test_create_job_moves_job_to_queued_and_writes_created_and_queued_events(session, engine, monkeypatch, user):
     session_local = _patch_test_sessionmakers(monkeypatch, engine)
     _disable_background_task(monkeypatch)
 
@@ -55,7 +55,8 @@ async def test_create_job_moves_job_to_queued_and_writes_created_and_queued_even
 
     created_job = await service.create_job(
         CreateJobRequest(type="email", payload="hello"),
-        session,
+        user_id=user.id,
+        session=session,
     )
 
     async with session_local() as check_session:
@@ -69,6 +70,7 @@ async def test_create_job_moves_job_to_queued_and_writes_created_and_queued_even
         ).scalars().all()
 
     assert job_from_db is not None
+    assert job_from_db.user_id == user.id
     assert job_from_db.status == JobStatus.QUEUED
     assert [event.event_type for event in events] == [
         JobEventType.CREATED,
@@ -78,7 +80,7 @@ async def test_create_job_moves_job_to_queued_and_writes_created_and_queued_even
 
 
 @pytest.mark.asyncio
-async def test_job_executor_completes_lifecycle_and_persists_progress_events(session, engine, monkeypatch):
+async def test_job_executor_completes_lifecycle_and_persists_progress_events(session, engine, monkeypatch, user):
     session_local = _patch_test_sessionmakers(monkeypatch, engine)
     _disable_background_task(monkeypatch)
 
@@ -99,7 +101,8 @@ async def test_job_executor_completes_lifecycle_and_persists_progress_events(ses
 
     created_job = await service.create_job(
         CreateJobRequest(type="email", payload="hello"),
-        session,
+        user_id=user.id,
+        session=session,
     )
     
     await executor.run_job(created_job.id)

@@ -41,16 +41,18 @@ class JobService:
         )
         return {"items": await self.job_repo.get(session, skip, limit)}
 
-    async def create_job(self, job: CreateJobRequest, session: AsyncSession) -> Job:
+    async def create_job(self, job: CreateJobRequest, user_id: int, session: AsyncSession) -> Job:
         logger.info(
             "Job creation requested",
             extra={
                 "event": "job_creation_requested",
                 "job_type": job.type,
+                "user_id": user_id,
             },
         )
 
         new_job = Job(
+            user_id=user_id,
             type=job.type,
             payload=job.payload,
             status=JobStatus.PENDING,
@@ -88,6 +90,7 @@ class JobService:
             extra={
                 "event": "job_created",
                 "job_id": new_job.id,
+                "user_id": new_job.user_id,
                 "job_type": new_job.type,
                 "job_status": new_job.status,
             },

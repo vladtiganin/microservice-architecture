@@ -8,12 +8,14 @@ from main_service.repositories.webhook_repository import WebhookRepository
 from main_service.schemas.enums import JobStatus, WebhookDeliveryStatus
 
 
-async def _create_job(session):
+async def _create_job(session, user):
     job_repo = JobsRepository()
     return await job_repo.add(
         Job(
+            user_id=user.id,
             type="email",
             status=JobStatus.PENDING,
+            correlation_id="test-correlation-id",
             payload="hello",
             result=None,
             error=None,
@@ -23,9 +25,9 @@ async def _create_job(session):
 
 
 @pytest.mark.asyncio
-async def test_webhook_repository_add_persists_webhook(session):
+async def test_webhook_repository_add_persists_webhook(session, user):
     repo = WebhookRepository()
-    job = await _create_job(session)
+    job = await _create_job(session, user)
 
     webhook = WebhookSubscription(
         job_id=job.id,
@@ -44,10 +46,10 @@ async def test_webhook_repository_add_persists_webhook(session):
 
 
 @pytest.mark.asyncio
-async def test_webhook_repository_find_wbhooks_by_job_id_returns_ordered_items(session):
+async def test_webhook_repository_find_wbhooks_by_job_id_returns_ordered_items(session, user):
     repo = WebhookRepository()
-    job = await _create_job(session)
-    other_job = await _create_job(session)
+    job = await _create_job(session, user)
+    other_job = await _create_job(session, user)
 
     first_webhook = await repo.add(
         WebhookSubscription(
@@ -83,9 +85,9 @@ async def test_webhook_repository_find_wbhooks_by_job_id_returns_ordered_items(s
 
 
 @pytest.mark.asyncio
-async def test_webhook_repository_update_result_fields_updates_status_error_and_active_flag(session):
+async def test_webhook_repository_update_result_fields_updates_status_error_and_active_flag(session, user):
     repo = WebhookRepository()
-    job = await _create_job(session)
+    job = await _create_job(session, user)
     webhook = await repo.add(
         WebhookSubscription(
             job_id=job.id,
@@ -132,9 +134,9 @@ async def test_webhook_repository_update_result_fields_updates_status_error_and_
 
 
 @pytest.mark.asyncio
-async def test_webhook_repository_webhook_exist_returns_boolean(session):
+async def test_webhook_repository_webhook_exist_returns_boolean(session, user):
     repo = WebhookRepository()
-    job = await _create_job(session)
+    job = await _create_job(session, user)
     webhook = await repo.add(
         WebhookSubscription(
             job_id=job.id,
@@ -150,9 +152,9 @@ async def test_webhook_repository_webhook_exist_returns_boolean(session):
 
 
 @pytest.mark.asyncio
-async def test_webhook_repository_delete_removes_webhook(session):
+async def test_webhook_repository_delete_removes_webhook(session, user):
     repo = WebhookRepository()
-    job = await _create_job(session)
+    job = await _create_job(session, user)
     webhook = await repo.add(
         WebhookSubscription(
             job_id=job.id,

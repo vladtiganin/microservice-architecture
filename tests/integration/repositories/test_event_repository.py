@@ -9,18 +9,24 @@ from main_service.schemas.enums import JobEventType, JobStatus
 from sqlalchemy.exc import IntegrityError
 
 
+def _job(user, payload: str = "hello") -> Job:
+    return Job(
+        user_id=user.id,
+        type="email",
+        status=JobStatus.PENDING,
+        correlation_id="test-correlation-id",
+        payload=payload,
+        result=None,
+        error=None,
+    )
+
+
 @pytest.mark.asyncio
-async def test_event_repository_add_persists_event(session):
+async def test_event_repository_add_persists_event(session, user):
     event_repo = EventRepository()
     job_repo = JobsRepository()
 
-    job = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    ) 
+    job = _job(user)
     job = await job_repo.add(job, session)
 
     eve = JobEvent(
@@ -38,17 +44,11 @@ async def test_event_repository_add_persists_event(session):
 
 
 @pytest.mark.asyncio
-async def test_event_repository_add_persists_payload(session):
+async def test_event_repository_add_persists_payload(session, user):
     event_repo = EventRepository()
     job_repo = JobsRepository()
 
-    job = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    ) 
+    job = _job(user)
     job = await job_repo.add(job, session)
 
     eve = JobEvent(
@@ -67,17 +67,11 @@ async def test_event_repository_add_persists_payload(session):
 
 
 @pytest.mark.asyncio
-async def test_event_repository_add_allows_multiple_events_for_same_job_with_different_sequence(session):
+async def test_event_repository_add_allows_multiple_events_for_same_job_with_different_sequence(session, user):
     event_repo = EventRepository()
     job_repo = JobsRepository()
 
-    job = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    ) 
+    job = _job(user)
     job = await job_repo.add(job, session)
 
     eve_1 = JobEvent(
@@ -106,17 +100,11 @@ async def test_event_repository_add_allows_multiple_events_for_same_job_with_dif
 
 
 @pytest.mark.asyncio
-async def test_event_repository_add_raises_integrity_error_for_duplicate_sequence_no_per_job(session):
+async def test_event_repository_add_raises_integrity_error_for_duplicate_sequence_no_per_job(session, user):
     event_repo = EventRepository()
     job_repo = JobsRepository()
 
-    job = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    ) 
+    job = _job(user)
     job = await job_repo.add(job, session)
 
     eve_1 = JobEvent(
@@ -140,24 +128,12 @@ async def test_event_repository_add_raises_integrity_error_for_duplicate_sequenc
 
 
 @pytest.mark.asyncio
-async def test_event_repository_add_allows_same_sequence_no_for_different_jobs(session):
+async def test_event_repository_add_allows_same_sequence_no_for_different_jobs(session, user):
     event_repo = EventRepository()
     job_repo = JobsRepository()
 
-    job_1 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
-    job_2 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    ) 
+    job_1 = _job(user)
+    job_2 = _job(user)
     job_1 = await job_repo.add(job_1, session)
     job_2 = await job_repo.add(job_2, session)
 
@@ -187,28 +163,16 @@ async def test_event_repository_add_allows_same_sequence_no_for_different_jobs(s
 
 
 @pytest.mark.asyncio
-async def test_event_repository_get_filters_by_job_id_and_applies_skip_and_limit(session):
+async def test_event_repository_get_filters_by_job_id_and_applies_skip_and_limit(session, user):
     event_repo = EventRepository()
     job_repo = JobsRepository()
 
     job = await job_repo.add(
-        Job(
-            type="email",
-            status=JobStatus.PENDING,
-            payload="hello",
-            result=None,
-            error=None,
-        ),
+        _job(user),
         session,
     )
     other_job = await job_repo.add(
-        Job(
-            type="email",
-            status=JobStatus.PENDING,
-            payload="other",
-            result=None,
-            error=None,
-        ),
+        _job(user, payload="other"),
         session,
     )
 

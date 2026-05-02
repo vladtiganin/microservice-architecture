@@ -5,51 +5,40 @@ from main_service.repositories.jobs_repository import JobsRepository
 from main_service.schemas.enums import JobStatus
 
 
-@pytest.mark.asyncio
-async def test_jobs_repository_add_persists_job(session):
-    repo = JobsRepository()
-
-    job = Job(
+def _job(user, payload: str = "hello") -> Job:
+    return Job(
+        user_id=user.id,
         type="email",
         status=JobStatus.PENDING,
-        payload="hello",
+        correlation_id="test-correlation-id",
+        payload=payload,
         result=None,
         error=None,
     )
 
+
+@pytest.mark.asyncio
+async def test_jobs_repository_add_persists_job(session, user):
+    repo = JobsRepository()
+
+    job = _job(user)
+
     saved_job = await repo.add(job, session)
 
     assert saved_job.id is not None
+    assert saved_job.user_id == user.id
     assert saved_job.type == "email"
     assert saved_job.payload == "hello"
     assert saved_job.status == JobStatus.PENDING
 
 
 @pytest.mark.asyncio
-async def test_jobs_repository_get_returns_jobs_ordered_by_id(session):
+async def test_jobs_repository_get_returns_jobs_ordered_by_id(session, user):
     repo = JobsRepository()
 
-    job_1 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
-    job_2 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
-    job_3 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
+    job_1 = _job(user)
+    job_2 = _job(user)
+    job_3 = _job(user)
 
     await repo.add(job_1, session)
     await repo.add(job_2, session)
@@ -63,44 +52,14 @@ async def test_jobs_repository_get_returns_jobs_ordered_by_id(session):
 
 
 @pytest.mark.asyncio
-async def test_jobs_repository_get_applies_skip_and_limit(session):
+async def test_jobs_repository_get_applies_skip_and_limit(session, user):
     repo = JobsRepository()
 
-    job_1 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
-    job_2 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
-    job_3 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
-    job_4 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
-    job_5 = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
+    job_1 = _job(user)
+    job_2 = _job(user)
+    job_3 = _job(user)
+    job_4 = _job(user)
+    job_5 = _job(user)
 
     await repo.add(job_1, session)
     await repo.add(job_2, session)
@@ -116,16 +75,10 @@ async def test_jobs_repository_get_applies_skip_and_limit(session):
 
 
 @pytest.mark.asyncio
-async def test_jobs_repository_find_job_by_id_returns_job_when_exists(session):
+async def test_jobs_repository_find_job_by_id_returns_job_when_exists(session, user):
     repo = JobsRepository()
 
-    job = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
+    job = _job(user)
 
     await repo.add(job, session)
 
@@ -144,15 +97,9 @@ async def test_jobs_repository_find_job_by_id_returns_none_when_not_exists(sessi
 
 
 @pytest.mark.asyncio
-async def test_jobs_repository_job_exist_returns_boolean(session):
+async def test_jobs_repository_job_exist_returns_boolean(session, user):
     repo = JobsRepository()
-    job = Job(
-        type="email",
-        status=JobStatus.PENDING,
-        payload="hello",
-        result=None,
-        error=None,
-    )
+    job = _job(user)
 
     saved_job = await repo.add(job, session)
 
