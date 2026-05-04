@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from fastapi import HTTPException
 
+from main_service.core.exception.exception import JobCreateError, JobNotFoundError
 from main_service.models.job_models import Job, JobEvent
 from main_service.schemas.enums import JobEventType, JobStatus
 from main_service.schemas.jobs_schemas import CreateJobRequest
@@ -162,11 +162,11 @@ async def test_create_job_rolls_back_and_raises_500_when_job_repo_add_fails(job_
     event_repo.add = AsyncMock()
     session = AsyncMock()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(JobCreateError) as exc_info:
         await service.create_job(CreateJobRequest(type="email", payload="hello"), user_id=42, session=session)
 
     assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == "Error during creating a job"
+    assert exc_info.value.message == "Failed to create job"
     session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
     event_repo.add.assert_not_called()
@@ -179,11 +179,11 @@ async def test_create_job_rolls_back_and_raises_500_when_event_repo_add_fails(jo
     event_repo.add = AsyncMock(side_effect=Exception("db error"))
     session = AsyncMock()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(JobCreateError) as exc_info:
         await service.create_job(CreateJobRequest(type="email", payload="hello"), user_id=42, session=session)
 
     assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == "Error during creating a job"
+    assert exc_info.value.message == "Failed to create job"
     session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
 
@@ -208,12 +208,12 @@ async def test_get_job_by_id_raises_404_when_not_found(job_service_fixture):
     session = AsyncMock()
 
     with capture_structured_logs() as get_logs:
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(JobNotFoundError) as exc_info:
             await service.get_job_by_id(1, session)
     logs = get_logs()
 
     assert exc_info.value.status_code == 404
-    assert exc_info.value.detail == "Job with this id not found"
+    assert exc_info.value.message == "Job with id 1 not found"
     assert [record["event"] for record in logs] == ["job_not_found"]
     assert logs[0]["job_id"] == 1
 
@@ -257,8 +257,8 @@ async def test_manage_job_executing_consumes_grpc_stream_and_transitions_job(mon
     calls = []
 
     class FakeExecutor:
-        def ExecuteJob(self, request, timeout):
-            calls.append((request, timeout))
+        def ExecuteJob(self, request, timeout, metadata):
+            calls.append((request, timeout, metadata))
 
             async def resp_stream():
                 yield SimpleNamespace(status="running", progress=10, result="", error="")
@@ -277,7 +277,7 @@ async def test_manage_job_executing_consumes_grpc_stream_and_transitions_job(mon
 
     await service._manage_job_executing(job)
 
-    request, timeout = calls[0]
+    request, timeout, metadata = calls[0]
     statuses = [call.kwargs["job_status"] for call in transition_mock.await_args_list]
     event_types = [call.kwargs["event_type"] for call in transition_mock.await_args_list]
 
@@ -285,6 +285,7 @@ async def test_manage_job_executing_consumes_grpc_stream_and_transitions_job(mon
     assert request.type == "email"
     assert request.payload == "hello"
     assert timeout == 60
+    assert metadata == (("x-correlation-id", "-"),)
     assert statuses == [JobStatus.RUNNING, JobStatus.SUCCEEDED]
     assert event_types == [JobEventType.RUNNING, JobEventType.FINISHED]
     assert transition_mock.await_args_list[0].kwargs["event_payload"] == {"progress": "10%"}
@@ -297,7 +298,7 @@ async def test_manage_job_executing_marks_job_failed_on_grpc_error(monkeypatch):
     transition_mock = AsyncMock()
 
     class FakeExecutor:
-        def ExecuteJob(self, request, timeout):
+        def ExecuteJob(self, request, timeout, metadata):
             raise FakeRpcError(code_name="UNAVAILABLE", details="grpc down")
 
     service = JobService(job_repo=Mock(), event_repo=Mock(), job_executor=FakeExecutor())
@@ -322,7 +323,7 @@ async def test_manage_job_executing_marks_job_failed_on_runtime_error(monkeypatc
     transition_mock = AsyncMock()
 
     class FakeExecutor:
-        def ExecuteJob(self, request, timeout):
+        def ExecuteJob(self, request, timeout, metadata):
             raise RuntimeError("boom")
 
     service = JobService(job_repo=Mock(), event_repo=Mock(), job_executor=FakeExecutor())
@@ -344,7 +345,7 @@ async def test_manage_job_executing_marks_job_failed_on_unknown_executor_status(
     transition_mock = AsyncMock()
 
     class FakeExecutor:
-        def ExecuteJob(self, request, timeout):
+        def ExecuteJob(self, request, timeout, metadata):
             async def resp_stream():
                 yield SimpleNamespace(status="mystery", progress=10, result="", error="")
 
@@ -384,11 +385,11 @@ async def test_generate_sse_job_event_stream_raises_404_when_job_does_not_exist(
 
     stream = service.generate_sse_job_event_stream(job_id=7, request=request)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(JobNotFoundError) as exc_info:
         await anext(stream)
 
     assert exc_info.value.status_code == 404
-    assert exc_info.value.detail == "Job not found"
+    assert exc_info.value.message == "Job with id 7 not found"
     job_repo.job_exist.assert_awaited_once_with(7, first_session)
     event_repo.get.assert_not_called()
 

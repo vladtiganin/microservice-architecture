@@ -26,6 +26,9 @@ class FakeContext:
     def __init__(self):
         self.abort = AsyncMock(side_effect=AbortCalled("aborted"))
 
+    def invocation_metadata(self):
+        return (("x-correlation-id", "test-correlation-id"),)
+
 
 class AsyncClientContext:
     def __init__(self, client):

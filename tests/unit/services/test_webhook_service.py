@@ -10,9 +10,13 @@ from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
-from fastapi import HTTPException
 
 from contracts import webhook_pb2
+from main_service.core.exception.exception import (
+    JobNotFoundError,
+    WebhookCreateError,
+    WebhookNotFoundError,
+)
 from main_service.schemas.enums import JobStatus, WebhookDeliveryStatus
 from main_service.schemas.webhook_schemas import CreateWebhookRequest
 from main_service.services import webhook_service as webhook_service_module
@@ -126,14 +130,14 @@ async def test_create_webhook_raises_404_when_job_is_missing(webhook_service_fix
     job_repo.job_exist = AsyncMock(return_value=False)
     session = AsyncMock()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(JobNotFoundError) as exc_info:
         await service.create_webhook(
             CreateWebhookRequest(job_id=7, target_url="https://example.com/hook"),
             session,
         )
 
     assert exc_info.value.status_code == 404
-    assert exc_info.value.detail == "Job with this id not found"
+    assert exc_info.value.message == "Job with id 7 not found"
 
 
 @pytest.mark.asyncio
@@ -145,14 +149,14 @@ async def test_create_webhook_rolls_back_and_raises_500_on_repository_error(
     webhook_repo.add = AsyncMock(side_effect=Exception("db error"))
     session = AsyncMock()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(WebhookCreateError) as exc_info:
         await service.create_webhook(
             CreateWebhookRequest(job_id=7, target_url="https://example.com/hook"),
             session,
         )
 
     assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == "Server error, try later"
+    assert exc_info.value.message == "Failed to create webhook"
     session.rollback.assert_awaited_once()
 
 
@@ -176,11 +180,11 @@ async def test_delete_by_id_raises_404_when_webhook_is_missing(webhook_service_f
     webhook_repo.webhook_exist = AsyncMock(return_value=False)
     session = AsyncMock()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(WebhookNotFoundError) as exc_info:
         await service.delete_by_id(4, session)
 
     assert exc_info.value.status_code == 404
-    assert exc_info.value.detail == "Webhook does not exists"
+    assert exc_info.value.message == "Webhook with id 4 not found"
 
 
 @pytest.mark.asyncio

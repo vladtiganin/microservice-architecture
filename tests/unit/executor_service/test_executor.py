@@ -23,6 +23,9 @@ class FakeContext:
         self.abort = AsyncMock(side_effect=AbortCalled("aborted"))
         self.cancelled = Mock(return_value=cancelled)
 
+    def invocation_metadata(self):
+        return (("x-correlation-id", "test-correlation-id"),)
+
 
 def parse_json_logs(stderr: str) -> list[dict]:
     return [json.loads(line) for line in stderr.splitlines() if line.strip()]
